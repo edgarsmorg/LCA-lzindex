@@ -1,0 +1,15 @@
+[submodule "external/ropebwt3"]
+	path = external/ropebwt3
+	url = https://github.com/lh3/ropebwt3.git
+[submodule "external/sr-index"]
+	path = external/sr-index
+	url = https://github.com/duscob/sr-index.git
+[submodule "external/uiHRDC"]
+	path = external/uiHRDC
+	url = https://github.com/migumar2/uiHRDC.git
+[submodule "external/big-bwt"]
+	path = external/big-bwt
+	url = https://github.com/alshai/Big-BWT.git
+[submodule "external/sdsl-lite"]
+	path = external/sdsl-lite
+	url = https://github.com/duscob/sdsl-lite.git
