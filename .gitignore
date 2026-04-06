@@ -36,6 +36,13 @@ data/cere*
 data/para*
 data/influenza*
 
+# Caché sdsl-lite (generada por sr-index benchmarks en cwd)
+*.sdsl
+construction-*.json
+construction-*.html
+data/*/sr_build/
+data/**/*.fmr
+
 # Temporary
 tmp/
 *.tmp
