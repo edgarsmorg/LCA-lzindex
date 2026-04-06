@@ -23,15 +23,17 @@ Makefile
 *~
 .DS_Store
 
-# Data and results
-data/*.fa
-data/*.fasta
+# Data and results (corpus grandes — ignorados)
 data/*.fmd
 data/*.fmr
-data/*.txt
 data/*.bed
 results/
 timing.txt
+# Corpus reales (deben ignorarse por tamaño)
+data/Escherichia_coli*
+data/cere*
+data/para*
+data/influenza*
 
 # Temporary
 tmp/
