@@ -27,7 +27,8 @@ Makefile
 data/*.fmd
 data/*.fmr
 data/*.bed
-results/
+results/*.json
+results/*.csv
 timing.txt
 # Corpus reales (deben ignorarse por tamaño)
 data/Escherichia_coli*
