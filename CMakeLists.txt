@@ -16,8 +16,16 @@ endif()
 # Headers del proyecto
 include_directories(${CMAKE_SOURCE_DIR}/src)
 
+# Archivos fuente del proyecto
+set(PROJECT_SOURCES
+    src/main.cpp
+    src/index.cpp
+    src/lz77/parser.cpp
+    src/lz77/grid.cpp
+)
+
 # Ejecutable principal
-add_executable(memoria_lca src/main.cpp)
+add_executable(memoria_lca ${PROJECT_SOURCES})
 
 # Habilitamos testing
 enable_testing()
