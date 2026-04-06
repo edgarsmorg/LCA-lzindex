@@ -1,0 +1,71 @@
+{
+  "tree": {
+    "nodes": [
+      {
+        "id": 0,
+        "name": "root",
+        "parent": null
+      },
+      {
+        "id": 1,
+        "name": "A",
+        "parent": 0
+      },
+      {
+        "id": 2,
+        "name": "B",
+        "parent": 0
+      },
+      {
+        "id": 3,
+        "name": "A1",
+        "parent": 1
+      },
+      {
+        "id": 4,
+        "name": "A2",
+        "parent": 1
+      },
+      {
+        "id": 5,
+        "name": "B1",
+        "parent": 2
+      },
+      {
+        "id": 6,
+        "name": "B2",
+        "parent": 2
+      }
+    ]
+  },
+  "genomes": [
+    {
+      "node_id": 3,
+      "name": "A1",
+      "start": 0,
+      "end": 20,
+      "length": 20
+    },
+    {
+      "node_id": 4,
+      "name": "A2",
+      "start": 21,
+      "end": 41,
+      "length": 20
+    },
+    {
+      "node_id": 5,
+      "name": "B1",
+      "start": 42,
+      "end": 63,
+      "length": 21
+    },
+    {
+      "node_id": 6,
+      "name": "B2",
+      "start": 64,
+      "end": 84,
+      "length": 20
+    }
+  ]
+}

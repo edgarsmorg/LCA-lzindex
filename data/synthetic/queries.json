@@ -1,0 +1,37 @@
+[
+  {
+    "id": "q1",
+    "seq": "ACGTACGT",
+    "expected_lca_id": 1,
+    "expected_lca_name": "A",
+    "note": "compartido A1+A2"
+  },
+  {
+    "id": "q2",
+    "seq": "TGCATGCA",
+    "expected_lca_id": 2,
+    "expected_lca_name": "B",
+    "note": "compartido B1+B2"
+  },
+  {
+    "id": "q3",
+    "seq": "GGGGGGGG",
+    "expected_lca_id": 0,
+    "expected_lca_name": "root",
+    "note": "compartido A2+B1"
+  },
+  {
+    "id": "q4",
+    "seq": "AAAAACGT",
+    "expected_lca_id": 3,
+    "expected_lca_name": "A1",
+    "note": "\u00fanico A1"
+  },
+  {
+    "id": "q5",
+    "seq": "CCCCCCCC",
+    "expected_lca_id": 6,
+    "expected_lca_name": "B2",
+    "note": "\u00fanico B2"
+  }
+]
