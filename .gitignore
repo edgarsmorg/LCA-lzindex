@@ -1,1 +1,39 @@
+# Build artifacts
+build/
+dist/
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.cmake
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Data and results
+data/*.fa
+data/*.fasta
+data/*.fmd
+data/*.fmr
+data/*.txt
+data/*.bed
+results/
+timing.txt
+
+# Temporary
 tmp/
+*.tmp
+*.temp
