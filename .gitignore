@@ -35,6 +35,8 @@ data/Escherichia_coli*
 data/cere*
 data/para*
 data/influenza*
+# Datasets sintéticos generados (grandes, reproducibles con scripts)
+data/synthetic_1mb/
 
 # Caché sdsl-lite (generada por sr-index benchmarks en cwd)
 *.sdsl

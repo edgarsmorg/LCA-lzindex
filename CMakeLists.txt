@@ -30,6 +30,29 @@ add_executable(memoria_lca ${PROJECT_SOURCES})
 # Habilitamos testing
 enable_testing()
 
+# ── sr_locate: tool de locate sobre el sr-index ───────────────────────────
+# duscob/sdsl-lite es header-only (divsufsort incluido inline), no hay .a
+set(SR_INDEX_DIR ${CMAKE_SOURCE_DIR}/external/sr-index)
+set(SDSL_INCLUDE  $ENV{HOME}/.local/include)
+set(SR_BUILD_DIR  ${SR_INDEX_DIR}/build)
+
+if(EXISTS ${SR_INDEX_DIR}/include AND EXISTS ${SDSL_INCLUDE}/sdsl)
+    add_executable(sr_locate tools/sr_locate.cpp)
+    target_include_directories(sr_locate PRIVATE
+        ${SR_INDEX_DIR}/include
+        ${SDSL_INCLUDE}
+        ${SR_BUILD_DIR}/_deps/gflags-build/include
+        ${SR_BUILD_DIR}/_deps/json-src/single_include
+    )
+    target_link_libraries(sr_locate PRIVATE
+        ${SR_BUILD_DIR}/_deps/gflags-build/libgflags_nothreads.a
+        pthread
+    )
+    message(STATUS "sr_locate: habilitado")
+else()
+    message(STATUS "sr_locate: deshabilitado (sdsl o sr-index no encontrado)")
+endif()
+
 # Directorios de tests y benchmarks (a agregar después)
 # add_subdirectory(tests)
 # add_subdirectory(bench)
