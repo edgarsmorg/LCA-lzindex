@@ -1,12 +1,130 @@
 #include "parser.hpp"
 
+#include <algorithm>
+#include <vector>
+
+#include <sdsl/divsufsort.hpp>
+
 namespace lz77tax {
 
+// ── Kasai's algorithm para LCP array ─────────────────────────────────────────
+// lcp[i] = longitud del prefijo común más largo entre los sufijos SA[i-1] y SA[i].
+// lcp[0] = 0 por convención.
+static void build_lcp_kasai(const std::string& text,
+                             const std::vector<int32_t>& sa,
+                             const std::vector<int32_t>& isa,
+                             std::vector<int32_t>& lcp) {
+    const size_t n = text.size();
+    lcp.assign(n, 0);
+    int32_t h = 0;
+    for (size_t i = 0; i < n; i++) {
+        if (isa[i] > 0) {
+            int32_t j = sa[isa[i] - 1];
+            while (static_cast<size_t>(i + h) < n &&
+                   static_cast<size_t>(j + h) < n &&
+                   text[i + h] == text[j + h])
+                ++h;
+            lcp[isa[i]] = h;
+            if (h > 0) --h;
+        }
+    }
+}
+
+// ── Parser LZ77 greedy de izquierda a derecha ─────────────────────────────────
+//
+// Para cada posición i buscamos el factor previo más largo: el mayor len tal que
+// T[i..i+len-1] aparece en T[0..i-1]. La búsqueda usa SA + LCP:
+//
+//  - En el SA, T[i..] está en el rank r = ISA[i].
+//  - Sus vecinos con SA[k] < i son las ocurrencias previas.
+//  - El LCP entre el rank k y r es min(LCP[k+1..r]) (o LCP[r+1..k] si k > r).
+//  - Escaneamos izquierda y derecha desde r, manteniendo un mínimo corriente.
+//    Paramos cuando el mínimo cae a 0 (ya no hay match posible más largo).
+//
+// Complejidad: O(n) amortizada (cada carácter se procesa al menos una vez como
+// next_char, y el inner scan es amortizado por el avance greedy).
+//
 LZ77Parsing LZ77Parser::parse(const std::string& text) {
+    if (text.empty()) {
+        phrase_count_ = 0;
+        return {};
+    }
+
+    const size_t n = text.size();
+
+    // 1. Suffix Array con divsufsort (header-only en sdsl duscob fork)
+    std::vector<int32_t> sa(n);
+    sdsl::divsufsort(reinterpret_cast<const uint8_t*>(text.data()),
+                     sa.data(), static_cast<int32_t>(n));
+
+    // 2. Inverse Suffix Array
+    std::vector<int32_t> isa(n);
+    for (size_t i = 0; i < n; i++)
+        isa[sa[i]] = static_cast<int32_t>(i);
+
+    // 3. LCP array (Kasai)
+    std::vector<int32_t> lcp(n, 0);
+    build_lcp_kasai(text, sa, isa, lcp);
+
+    // 4. Greedy LZ77 parsing
     LZ77Parsing phrases;
-    // TODO: Implement LZ77 parsing from Suffix Array
-    // For now, return empty parsing as placeholder
-    phrase_count_ = 0;
+    size_t i = 0;
+
+    while (i < n) {
+        const size_t r = static_cast<size_t>(isa[i]);
+        size_t best_len = 0;
+
+        // Escaneo izquierdo: desde rank r-1 bajando a 0.
+        // lcp(k, r) = min(LCP[k+1..r]), calculado incrementalmente.
+        if (r > 0) {
+            size_t min_lcp = static_cast<size_t>(lcp[r]);
+            for (int32_t k = static_cast<int32_t>(r) - 1; k >= 0; --k) {
+                if (min_lcp == 0) break;
+                if (static_cast<size_t>(sa[k]) < i) {
+                    best_len = std::max(best_len, min_lcp);
+                    break;
+                }
+                if (k > 0)
+                    min_lcp = std::min(min_lcp, static_cast<size_t>(lcp[k]));
+                else
+                    break;
+            }
+        }
+
+        // Escaneo derecho: desde rank r+1 subiendo a n-1.
+        // lcp(r, k) = min(LCP[r+1..k]), calculado incrementalmente.
+        if (r + 1 < n) {
+            size_t min_lcp = static_cast<size_t>(lcp[r + 1]);
+            for (size_t k = r + 1; k < n; ++k) {
+                if (min_lcp == 0) break;
+                if (static_cast<size_t>(sa[k]) < i) {
+                    best_len = std::max(best_len, min_lcp);
+                    break;
+                }
+                if (k + 1 < n)
+                    min_lcp = std::min(min_lcp, static_cast<size_t>(lcp[k + 1]));
+                else
+                    break;
+            }
+        }
+
+        // Garantizamos que siempre existe un next_char (T[i+len] en [0..n-1]).
+        if (best_len > 0 && i + best_len >= n)
+            best_len = n - i - 1;
+
+        if (best_len == 0) {
+            // Frase literal: solo el carácter T[i]
+            phrases.push_back({i, 0, static_cast<uint8_t>(text[i])});
+            i += 1;
+        } else {
+            // Frase de copia: copia best_len chars + agrega T[i+best_len]
+            phrases.push_back({i, best_len,
+                               static_cast<uint8_t>(text[i + best_len])});
+            i += best_len + 1;
+        }
+    }
+
+    phrase_count_ = phrases.size();
     return phrases;
 }
 

@@ -13,8 +13,9 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
 
-# Headers del proyecto
-include_directories(${CMAKE_SOURCE_DIR}/src)
+# Headers del proyecto + sdsl (header-only, duscob fork)
+set(SDSL_INCLUDE $ENV{HOME}/.local/include)
+include_directories(${CMAKE_SOURCE_DIR}/src ${SDSL_INCLUDE})
 
 # Archivos fuente del proyecto
 set(PROJECT_SOURCES
@@ -26,6 +27,25 @@ set(PROJECT_SOURCES
 
 # Ejecutable principal
 add_executable(memoria_lca ${PROJECT_SOURCES})
+
+# ── Tests con Google Test ─────────────────────────────────────────────────────
+include(FetchContent)
+FetchContent_Declare(
+    googletest
+    GIT_REPOSITORY https://github.com/google/googletest.git
+    GIT_TAG        v1.14.0
+)
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(googletest)
+
+add_executable(test_lz77 tests/test_lz77.cpp src/lz77/parser.cpp)
+target_include_directories(test_lz77 PRIVATE ${CMAKE_SOURCE_DIR}/src ${SDSL_INCLUDE})
+target_link_libraries(test_lz77 PRIVATE GTest::gtest_main)
+target_compile_options(test_lz77 PRIVATE -O2)
+
+include(GoogleTest)
+gtest_discover_tests(test_lz77)
 
 # Habilitamos testing
 enable_testing()
