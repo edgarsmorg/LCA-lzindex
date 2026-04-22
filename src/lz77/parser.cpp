@@ -39,10 +39,18 @@ static void build_lcp_kasai(const std::string& text,
 //  - Sus vecinos con SA[k] < i son las ocurrencias previas.
 //  - El LCP entre el rank k y r es min(LCP[k+1..r]) (o LCP[r+1..k] si k > r).
 //  - Escaneamos izquierda y derecha desde r, manteniendo un mínimo corriente.
-//    Paramos cuando el mínimo cae a 0 (ya no hay match posible más largo).
 //
-// Complejidad: O(n) amortizada (cada carácter se procesa al menos una vez como
-// next_char, y el inner scan es amortizado por el avance greedy).
+// Por qué parar en el primer SA[k] < i encontrado:
+//   El mínimo corriente min(LCP[k+1..r]) es NO CRECIENTE al alejar k de r.
+//   Por tanto la primera fuente válida hallada en cada dirección garantiza el
+//   mayor LCP posible en esa dirección; seguir escaneando solo puede empeorar.
+//
+// Complejidad: O(n log n) para construir SA con divsufsort + O(n) para LCP
+// (Kasai). El greedy tiene z frases con un scan por frase; en texto repetitivo
+// z ≪ n y el scan termina rápido (min_lcp cae a 0), pero el peor caso es
+// O(n·z) ≈ O(n²). Para los corpus objetivo (z ~ n/log n) es eficiente en práctica.
+//
+// Límite: usa int32_t para SA/ISA/LCP → texto máximo 2^31 - 1 ≈ 2 GB.
 //
 LZ77Parsing LZ77Parser::parse(const std::string& text) {
     if (text.empty()) {
@@ -75,36 +83,44 @@ LZ77Parsing LZ77Parser::parse(const std::string& text) {
         size_t best_len = 0;
 
         // Escaneo izquierdo: desde rank r-1 bajando a 0.
-        // lcp(k, r) = min(LCP[k+1..r]), calculado incrementalmente.
+        // Invariante: al entrar en iteración k, min_lcp = min(LCP[k+1..r])
+        //             = LCP(SA[k], SA[r]) = largo del match entre T[SA[k]..] y T[i..].
+        // Al bajar k, min_lcp es no-creciente → la primera fuente SA[k]<i da el
+        // mejor match posible hacia la izquierda; no se necesita seguir.
         if (r > 0) {
-            size_t min_lcp = static_cast<size_t>(lcp[r]);
+            size_t min_lcp = static_cast<size_t>(lcp[r]);  // LCP(SA[r-1], SA[r])
             for (int32_t k = static_cast<int32_t>(r) - 1; k >= 0; --k) {
                 if (min_lcp == 0) break;
                 if (static_cast<size_t>(sa[k]) < i) {
                     best_len = std::max(best_len, min_lcp);
                     break;
                 }
+                // Prepara min_lcp para la siguiente iteración (k-1):
+                // LCP(SA[k-1], SA[r]) = min(LCP[k..r]) = min(min_lcp, lcp[k])
                 if (k > 0)
                     min_lcp = std::min(min_lcp, static_cast<size_t>(lcp[k]));
                 else
-                    break;
+                    break;  // k=0 sin fuente válida: no hay más candidatos
             }
         }
 
         // Escaneo derecho: desde rank r+1 subiendo a n-1.
-        // lcp(r, k) = min(LCP[r+1..k]), calculado incrementalmente.
+        // Invariante: al entrar en iteración k, min_lcp = min(LCP[r+1..k])
+        //             = LCP(SA[r], SA[k]) = largo del match entre T[i..] y T[SA[k]..].
         if (r + 1 < n) {
-            size_t min_lcp = static_cast<size_t>(lcp[r + 1]);
+            size_t min_lcp = static_cast<size_t>(lcp[r + 1]);  // LCP(SA[r], SA[r+1])
             for (size_t k = r + 1; k < n; ++k) {
                 if (min_lcp == 0) break;
                 if (static_cast<size_t>(sa[k]) < i) {
                     best_len = std::max(best_len, min_lcp);
                     break;
                 }
+                // Prepara min_lcp para la siguiente iteración (k+1):
+                // LCP(SA[r], SA[k+1]) = min(LCP[r+1..k+1]) = min(min_lcp, lcp[k+1])
                 if (k + 1 < n)
                     min_lcp = std::min(min_lcp, static_cast<size_t>(lcp[k + 1]));
                 else
-                    break;
+                    break;  // k=n-1 sin fuente válida: no hay más candidatos
             }
         }
 

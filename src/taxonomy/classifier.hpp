@@ -67,12 +67,14 @@ public:
         return tree_->lca(node_min, node_max);
     }
 
-    /** Retorna el node_id del genoma al que pertenece una posición. */
+    // O(g) donde g = número de genomas. Aceptable para prototipo.
+    // En producción con miles de genomas: reemplazar por búsqueda binaria sobre
+    // genomes_ (que debe estar ordenado por start, lo cual se garantiza por DFS).
     int genome_of(size_t pos) const {
         for (const auto& g : genomes_) {
             if (pos >= g.start && pos < g.end) return g.node_id;
         }
-        return -1;  // posición en separador
+        return -1;  // posición en separador '#' entre genomas
     }
 
 private:

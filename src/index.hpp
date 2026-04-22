@@ -1,62 +1,98 @@
 #pragma once
 
+#include "lz77/parser.hpp"
+#include "lz77/grid.hpp"
+
+#include <cstddef>
 #include <string>
-#include <vector>
-#include <memory>
-#include "lz77/phrase.hpp"
-#include "mem/mem.hpp"
+
+#include <sdsl/suffix_arrays.hpp>
+#include <sdsl/csa_wt.hpp>
+#include <sdsl/util.hpp>
 
 namespace lz77tax {
 
 /**
- * Índice LZ77 comprimido para clasificación taxonómica de lecturas de ADN.
+ * Índice LZ77 para ocurrencias primarias.
  *
- * Implementa:
- * 1. Parsing LZ77 del texto de referencia
- * 2. Grilla 2D de puntos primarios con Wavelet Tree
- * 3. RMQ sucinto integrado en el Wavelet Tree
- * 4. Búsqueda de MEMs y mapeo a genomas
- * 5. Cómputo de LCA en el árbol filogenético
+ * count(P) retorna el número de pares (ocurrencia p, boundary k) tales que
+ * P ocurre en p y el boundary k cae dentro de P (p < boundary_k <= p+m-1).
+ * Esto es estrictamente menor o igual al total de ocurrencias de P.
+ *
+ * Para clasificación taxonómica, las posiciones extremales (min/max) de estas
+ * ocurrencias primarias son suficientes para determinar el LCA correcto.
  */
 class LZ77Index {
 public:
-    LZ77Index() = default;
-    ~LZ77Index() = default;
+    // ── Interfaz small-scale / tests (≤ ~500 MB) ─────────────────────────────
+    /**
+     * Construye el índice completo desde el texto crudo.
+     * Internamente añade '\0' como centinela, parsea, construye grid y CSAs.
+     *
+     * @param text  Texto sin centinela (e.g. ADN puro, sin '\0')
+     */
+    void build(const std::string& text);
+
+    // ── Interfaz producción (GB+) ─────────────────────────────────────────────
+    /**
+     * Recibe frases ya computadas y FM-indexes ya construidos (ropebwt3).
+     * Evita materializar SA completo en RAM — seguro a escala GB+.
+     *
+     * @param phrases   Parsing LZ77 del texto (z frases, con centinela incluido)
+     * @param csa_fwd   FM-index de T (construido sobre text + '\0')
+     * @param csa_rev   FM-index de T^R (construido sobre reverse(text) + '\0')
+     */
+    void build(const LZ77Parsing& phrases,
+               const sdsl::csa_wt<>& csa_fwd,
+               const sdsl::csa_wt<>& csa_rev);
+
+    // ── Query ─────────────────────────────────────────────────────────────────
+    /**
+     * Cuenta ocurrencias primarias de pattern.
+     *
+     * Complejidad: O(m² · t_ψ + occ · log z)
+     * donde m=|pattern|, t_ψ = intervalo de muestreo del CSA, occ = resultado.
+     *
+     * Retorna 0 si pattern está vacío, tiene longitud 1, o el índice está vacío.
+     */
+    size_t count(const std::string& pattern) const;
 
     /**
-     * Construye el índice a partir de un archivo de referencia.
+     * Localiza la posición mínima y máxima entre todas las ocurrencias primarias
+     * de pattern (aquellas que cruzan al menos un boundary de frase).
      *
-     * @param reference_file Ruta al archivo FASTA con la concatenación de genomas
-     * @return true si la construcción fue exitosa
-     */
-    bool build(const std::string& reference_file);
-
-    /**
-     * Serializa el índice a disco.
+     * Retorna {pos_min, pos_max} como posiciones de inicio del patrón en el texto.
+     * Retorna {SIZE_MAX, 0} si no hay ocurrencias primarias (pattern no existe,
+     * longitud < 2, o todas las ocurrencias caen dentro de una sola frase).
      *
-     * @param output_file Ruta donde guardar el índice
-     * @return true si la serialización fue exitosa
-     */
-    bool save(const std::string& output_file) const;
-
-    /**
-     * Carga el índice desde disco.
+     * Uso para clasificación taxonómica:
+     *   auto [lo, hi] = idx.locate_extremal(pattern);
+     *   int lca_node  = classifier.classify_extremal(lo, hi);
      *
-     * @param input_file Ruta del índice guardado
-     * @return true si la carga fue exitosa
+     * Complejidad: O(m² · t_ψ + occ_prim · log z)
      */
-    bool load(const std::string& input_file);
+    std::pair<size_t, size_t> locate_extremal(const std::string& pattern) const;
 
-    /// Cantidad de frases en el parsing LZ77
+    // ── Accesores ─────────────────────────────────────────────────────────────
+    /// Tamaño del texto indexado (incluyendo centinela '\0')
+    size_t text_size()    const { return csa_fwd_.size(); }
+
+    /// Número de frases LZ77
     size_t phrase_count() const { return phrases_.size(); }
 
-    /// Largo del texto de referencia original
-    size_t text_length() const { return text_length_; }
+    /// Número de puntos en la grilla (= z-1 para z frases)
+    size_t grid_points()  const { return grid_.point_count(); }
+
+    const LZ77Parsing& phrases() const { return phrases_; }
+    const Grid2D&      grid()    const { return grid_; }
+    size_t csa_fwd_bytes()       const { return sdsl::size_in_bytes(csa_fwd_); }
+    size_t csa_rev_bytes()       const { return sdsl::size_in_bytes(csa_rev_); }
 
 private:
-    LZ77Parsing phrases_;
-    size_t text_length_ = 0;
-    // TODO: agregar Wavelet Tree, RMQ, bitvectors
+    LZ77Parsing    phrases_;
+    Grid2D         grid_;
+    sdsl::csa_wt<> csa_fwd_;   // FM-index de T      (backward_search lado derecho)
+    sdsl::csa_wt<> csa_rev_;   // FM-index de T^R    (backward_search lado izquierdo)
 };
 
 }  // namespace lz77tax

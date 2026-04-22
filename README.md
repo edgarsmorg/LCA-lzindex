@@ -29,3 +29,4 @@ cmake --build build --parallel $(nproc)
 - sr-index (para comparación)
 
 Véase [CLAUDE.md](CLAUDE.md) para detalles completos de configuración y arquitectura.
+Véase [docs/glosario.md](docs/glosario.md) para una guía rápida de nomenclatura y estructuras (`SA`, `CSA`, `BWT`, `MEM`, `LCA`, etc.).

@@ -29,6 +29,9 @@ public:
      * Construye el árbol desde listas paralelas de ids, nombres y padres.
      * El nodo raíz debe tener parent = NO_PARENT.
      */
+    // REQUISITO: ids debe ser {0, 1, 2, ..., n-1} en el mismo orden que el vector.
+    // lca() usa node_id directamente como índice de array; si ids[i] != i el
+    // comportamiento es indefinido. parents[i] también debe ser un id válido (o NO_PARENT).
     void build(const std::vector<int>& ids,
                const std::vector<std::string>& names,
                const std::vector<int>& parents) {
@@ -36,6 +39,7 @@ public:
         int n = ids.size();
         nodes_.resize(n);
         for (int i = 0; i < n; ++i) {
+            assert(ids[i] == i && "PhyloTree: ids deben ser secuenciales 0..n-1");
             nodes_[i] = {ids[i], names[i], parents[i], -1};
         }
         // Calcular profundidades desde la raíz
