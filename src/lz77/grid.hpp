@@ -1,6 +1,7 @@
 #pragma once
 
 #include "phrase.hpp"
+#include "../wavelet/wt_rmq_min.hpp"
 
 #include <cstddef>
 #include <string>
@@ -102,13 +103,28 @@ public:
     ExtremalResult query_extremal(size_t sp_right, size_t ep_right,
                                   size_t sp_left,  size_t ep_left) const;
 
+    /**
+     * Consulta extremal mínima usando WtMinRmq (O(log² z), sin enumerar puntos).
+     *
+     * Retorna {count, boundary_min} donde boundary_min = start_{k+1} mínimo
+     * entre los puntos hallados. Si count==0, boundary_min = SIZE_MAX.
+     */
+    struct MinResult {
+        size_t count;        ///< 0 si rectángulo vacío
+        size_t boundary_min; ///< mínimo start_{k+1}; SIZE_MAX si count==0
+    };
+
+    MinResult query_min_2d(size_t sp_right, size_t ep_right,
+                           size_t sp_left,  size_t ep_left) const;
+
     // ── Accesores ─────────────────────────────────────────────────────────────
     /// Número de puntos en la grilla (= z-1 para z frases)
     size_t point_count() const { return wt_.size(); }
 
-    const sdsl::wt_int<>&    wt()      const { return wt_; }
-    const sdsl::sd_vector<>& bv_fwd()  const { return bv_fwd_; }
-    const sdsl::sd_vector<>& bv_rev()  const { return bv_rev_; }
+    const sdsl::wt_int<>&    wt()         const { return wt_; }
+    const sdsl::sd_vector<>& bv_fwd()    const { return bv_fwd_; }
+    const sdsl::sd_vector<>& bv_rev()    const { return bv_rev_; }
+    const WtMinRmq&          wt_min_rmq() const { return wt_min_rmq_; }
     /// Posición en el texto del boundary k+1 para el punto con índice WT wt_idx.
     size_t text_pos(size_t wt_idx) const { return text_pos_[wt_idx]; }
 
@@ -126,7 +142,8 @@ private:
     sdsl::sd_vector<>::rank_1_type  rank_fwd_;
     sdsl::sd_vector<>::rank_1_type  rank_rev_;
     sdsl::int_vector<>              text_pos_;        ///< text_pos_[j] = start_{k+1}, compacto
-    std::vector<size_t>             text_pos_plain_;  ///< copia como vector<size_t> para APIs externas
+    std::vector<size_t>             text_pos_plain_;  ///< copia como vector<size_t> para WtMinRmq
+    WtMinRmq                        wt_min_rmq_;      ///< WT+RMQ<min> topológico
 
     /// Núcleo compartido: recibe las z-1 coordenadas y los boundaries start_{k+1},
     /// construye bv_fwd_, bv_rev_, wt_ y text_pos_.

@@ -74,13 +74,21 @@ void Grid2D::build_from_coords(
         text_pos_[j] = boundaries[k];
     }
 
-    // shadow plain para APIs que requieren std::vector<size_t>
+    // shadow plain para WtMinRmq (pasa en cada consulta)
     text_pos_plain_.resize(z1);
     for (size_t j = 0; j < z1; ++j)
         text_pos_plain_[j] = static_cast<size_t>(text_pos_[j]);
 
     // ── 4. Construir wt_int sobre R ───────────────────────────────────────────
     sdsl::construct_im(wt_, R);
+
+    // ── 5. Construir WtMinRmq sobre (ys=R, text_pos_plain_, sigma=z1) ─────────
+    {
+        std::vector<size_t> ys(z1);
+        for (size_t j = 0; j < z1; ++j)
+            ys[j] = static_cast<size_t>(R[j]);
+        wt_min_rmq_.build(ys, text_pos_plain_, z1);
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -229,6 +237,30 @@ Grid2D::ExtremalResult Grid2D::query_extremal(size_t sp_right, size_t ep_right,
         if (bp > bmax) bmax = bp;
     }
     return {cnt, bmin, bmax};
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// query_min_2d()
+// ─────────────────────────────────────────────────────────────────────────────
+
+Grid2D::MinResult Grid2D::query_min_2d(size_t sp_right, size_t ep_right,
+                                        size_t sp_left,  size_t ep_left) const {
+    if (wt_min_rmq_.size() == 0) return {0, SIZE_MAX};
+
+    const size_t lb = rank_fwd_(sp_right);
+    if (ep_right + 1 > bv_fwd_.size()) return {0, SIZE_MAX};
+    const size_t rb = rank_fwd_(ep_right + 1);
+    if (rb == 0 || lb >= rb) return {0, SIZE_MAX};
+
+    const size_t vlb = rank_rev_(sp_left);
+    if (ep_left + 1 > bv_rev_.size()) return {0, SIZE_MAX};
+    const size_t vrb = rank_rev_(ep_left + 1);
+    if (vrb == 0 || vlb >= vrb) return {0, SIZE_MAX};
+
+    const auto r = wt_min_rmq_.range_argmin_2d(lb, rb - 1, vlb, vrb - 1,
+                                                text_pos_plain_);
+    if (r.count == 0) return {0, SIZE_MAX};
+    return {r.count, text_pos_plain_[r.argmin_global]};
 }
 
 }  // namespace lz77tax

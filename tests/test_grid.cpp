@@ -444,3 +444,100 @@ TEST(Grid2D_Extremal, TextPosConsistency) {
     // Y todos los boundaries intermedios (no el último) deben aparecer
     EXPECT_EQ(grid.point_count(), expected_boundaries.size());
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tests de query_min_2d: invariante query_min_2d.boundary_min == query_extremal.boundary_min
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Para cada split de cada patrón, verifica que query_min_2d y query_extremal
+ * retornan el mismo count y el mismo boundary_min.
+ */
+static void check_min_matches_extremal(const std::string& text_raw,
+                                        const std::string& pattern) {
+    const std::string text = with_sentinel(text_raw);
+    const size_t m = pattern.size();
+    if (m < 2) return;
+
+    LZ77Parser parser;
+    const auto phrases = parser.parse(text);
+    if (phrases.size() <= 1) return;
+
+    Grid2D grid;
+    grid.build(phrases, text);
+
+    sdsl::csa_wt<> csa_fwd;
+    sdsl::construct_im(csa_fwd, text_raw, 1);
+    const std::string text_rev(text_raw.rbegin(), text_raw.rend());
+    sdsl::csa_wt<> csa_rev;
+    sdsl::construct_im(csa_rev, text_rev, 1);
+
+    const size_t n = csa_fwd.size();
+
+    for (size_t i = 1; i < m; ++i) {
+        const std::string right_part(pattern.begin() + i, pattern.end());
+        const std::string left_rev(pattern.rbegin() + (m - i), pattern.rend());
+
+        size_t sp_r = 0, ep_r = n - 1;
+        sdsl::backward_search(csa_fwd, 0, n - 1, right_part.begin(), right_part.end(), sp_r, ep_r);
+        size_t sp_l = 0, ep_l = n - 1;
+        sdsl::backward_search(csa_rev, 0, n - 1, left_rev.begin(), left_rev.end(), sp_l, ep_l);
+
+        if (sp_r > ep_r || sp_l > ep_l) continue;
+
+        const auto ext = grid.query_extremal(sp_r, ep_r, sp_l, ep_l);
+        const auto mn  = grid.query_min_2d(sp_r, ep_r, sp_l, ep_l);
+
+        EXPECT_EQ(mn.count, ext.count)
+            << "count mismatch split=" << i << " pattern=" << pattern;
+        if (ext.count > 0) {
+            EXPECT_EQ(mn.boundary_min, ext.boundary_min)
+                << "boundary_min mismatch split=" << i << " pattern=" << pattern;
+        }
+    }
+}
+
+TEST(Grid2D_MinRmq, MinMatchesEnumeration_Abracadabra) {
+    const std::string text = "abracadabra";
+    for (const std::string p : {"abr", "ra", "bra", "cada", "abra", "ab"}) {
+        SCOPED_TRACE("pattern=" + p);
+        check_min_matches_extremal(text, p);
+    }
+}
+
+TEST(Grid2D_MinRmq, MinMatchesEnumeration_Repetitive) {
+    const std::string text = "ACGTACGTACGTACGT";
+    for (const std::string p : {"ACGT", "CGTA", "GT", "ACGTACGT"}) {
+        SCOPED_TRACE("pattern=" + p);
+        check_min_matches_extremal(text, p);
+    }
+}
+
+TEST(Grid2D_MinRmq, MinMatchesEnumeration_AllSameChar) {
+    const std::string text = "aaaaaaaaaaaaaaaa";
+    for (const std::string p : {"aa", "aaa", "aaaa"}) {
+        SCOPED_TRACE("pattern=" + p);
+        check_min_matches_extremal(text, p);
+    }
+}
+
+TEST(Grid2D_MinRmq, MinMatchesEnumeration_DNASynthetic) {
+    const std::string text = "AAACCCGGGTTTTAAACCC";
+    for (const std::string p : {"AAA", "CCC", "AAACCC", "GGG", "TTT"}) {
+        SCOPED_TRACE("pattern=" + p);
+        check_min_matches_extremal(text, p);
+    }
+}
+
+TEST(Grid2D_MinRmq, EmptyGrid) {
+    // Texto de 1 frase → grilla vacía
+    const std::string text = with_sentinel("a");
+    LZ77Parser parser;
+    const auto phrases = parser.parse(text);
+    Grid2D grid;
+    grid.build(phrases, text);
+
+    const auto mn = grid.query_min_2d(0, 10, 0, 10);
+    EXPECT_EQ(mn.count, 0u);
+    EXPECT_EQ(mn.boundary_min, SIZE_MAX);
+}
