@@ -23,6 +23,7 @@ set(PROJECT_SOURCES
     src/index.cpp
     src/lz77/parser.cpp
     src/lz77/grid.cpp
+    src/wavelet/wt_rmq_min.cpp
 )
 
 # Ejecutable principal
@@ -47,10 +48,20 @@ target_compile_options(test_lz77 PRIVATE -O2)
 include(GoogleTest)
 gtest_discover_tests(test_lz77)
 
+add_executable(test_wt_rmq_min
+    tests/test_wt_rmq_min.cpp
+    src/wavelet/wt_rmq_min.cpp
+)
+target_include_directories(test_wt_rmq_min PRIVATE ${CMAKE_SOURCE_DIR}/src ${SDSL_INCLUDE})
+target_link_libraries(test_wt_rmq_min PRIVATE GTest::gtest_main)
+target_compile_options(test_wt_rmq_min PRIVATE -O2)
+gtest_discover_tests(test_wt_rmq_min)
+
 add_executable(test_grid
     tests/test_grid.cpp
     src/lz77/parser.cpp
     src/lz77/grid.cpp
+    src/wavelet/wt_rmq_min.cpp
 )
 target_include_directories(test_grid PRIVATE ${CMAKE_SOURCE_DIR}/src ${SDSL_INCLUDE})
 target_link_libraries(test_grid PRIVATE GTest::gtest_main)
@@ -62,6 +73,7 @@ add_executable(test_index
     src/index.cpp
     src/lz77/parser.cpp
     src/lz77/grid.cpp
+    src/wavelet/wt_rmq_min.cpp
 )
 target_include_directories(test_index PRIVATE ${CMAKE_SOURCE_DIR}/src ${SDSL_INCLUDE})
 target_link_libraries(test_index PRIVATE GTest::gtest_main)
@@ -73,6 +85,7 @@ add_executable(test_classify
     src/index.cpp
     src/lz77/parser.cpp
     src/lz77/grid.cpp
+    src/wavelet/wt_rmq_min.cpp
 )
 target_include_directories(test_classify PRIVATE ${CMAKE_SOURCE_DIR}/src ${SDSL_INCLUDE})
 target_link_libraries(test_classify PRIVATE GTest::gtest_main)
@@ -110,6 +123,7 @@ add_executable(measure_index tools/measure_index.cpp
     src/index.cpp
     src/lz77/parser.cpp
     src/lz77/grid.cpp
+    src/wavelet/wt_rmq_min.cpp
 )
 target_include_directories(measure_index PRIVATE ${CMAKE_SOURCE_DIR}/src ${SDSL_INCLUDE})
 target_compile_options(measure_index PRIVATE -O3)
