@@ -9,6 +9,7 @@
 
 #include <sdsl/wt_int.hpp>
 #include <sdsl/sd_vector.hpp>
+#include <sdsl/int_vector.hpp>
 #include <sdsl/suffix_arrays.hpp>
 
 namespace lz77tax {
@@ -124,7 +125,8 @@ private:
     sdsl::sd_vector<>               bv_rev_;
     sdsl::sd_vector<>::rank_1_type  rank_fwd_;
     sdsl::sd_vector<>::rank_1_type  rank_rev_;
-    std::vector<size_t>             text_pos_; ///< text_pos_[j] = start_{k+1} del punto con índice WT j
+    sdsl::int_vector<>              text_pos_;        ///< text_pos_[j] = start_{k+1}, compacto
+    std::vector<size_t>             text_pos_plain_;  ///< copia como vector<size_t> para APIs externas
 
     /// Núcleo compartido: recibe las z-1 coordenadas y los boundaries start_{k+1},
     /// construye bv_fwd_, bv_rev_, wt_ y text_pos_.

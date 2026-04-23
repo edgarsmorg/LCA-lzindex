@@ -56,7 +56,10 @@ void Grid2D::build_from_coords(
     // text_pos_[j] = boundaries[k] = start_{k+1} para el punto con índice WT j.
     const uint8_t width = sdsl::bits::hi(z1) + 1;  // floor(log2(z1)) + 1: bits para [0..z1]
     sdsl::int_vector<> R(z1, 0, width);
-    text_pos_.resize(z1);
+
+    // text_pos_ compact: valores en [0, n-1], width = ceil(log2(n)) bits
+    const uint8_t tp_w = n > 1 ? static_cast<uint8_t>(sdsl::bits::hi(n - 1) + 1) : 1;
+    text_pos_ = sdsl::int_vector<>(z1, 0, tp_w);
 
     for (size_t k = 0; k < z1; ++k) {
         const size_t x = coords[k].first;
@@ -70,6 +73,11 @@ void Grid2D::build_from_coords(
         R[j]         = y_rel;
         text_pos_[j] = boundaries[k];
     }
+
+    // shadow plain para APIs que requieren std::vector<size_t>
+    text_pos_plain_.resize(z1);
+    for (size_t j = 0; j < z1; ++j)
+        text_pos_plain_[j] = static_cast<size_t>(text_pos_[j]);
 
     // ── 4. Construir wt_int sobre R ───────────────────────────────────────────
     sdsl::construct_im(wt_, R);
