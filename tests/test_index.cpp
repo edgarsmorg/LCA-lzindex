@@ -319,3 +319,80 @@ TEST(LZ77Index_LocateExtremal, ConsistencyWithCount) {
         }
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// locate_min() == locate_extremal().first
+// ─────────────────────────────────────────────────────────────────────────────
+
+static void check_locate_min(const std::string& text, const std::string& pattern) {
+    LZ77Index idx;
+    idx.build(text);
+
+    const size_t got_min       = idx.locate_min(pattern);
+    const auto [exp_min, exp_max] = idx.locate_extremal(pattern);
+
+    EXPECT_EQ(got_min, exp_min)
+        << "text=" << text << " pattern=" << pattern;
+}
+
+TEST(LZ77Index_LocateMin, Abracadabra) {
+    const std::string text = "abracadabra";
+    for (const std::string p : {"abr", "ra", "bra", "cada", "abra", "ab"}) {
+        SCOPED_TRACE("pattern=" + p);
+        check_locate_min(text, p);
+    }
+}
+
+TEST(LZ77Index_LocateMin, Repetitive_DNA) {
+    const std::string text = "ACGTACGTACGTACGT";
+    for (const std::string p : {"ACGT", "CGTA", "GT", "ACGTACGT"}) {
+        SCOPED_TRACE("pattern=" + p);
+        check_locate_min(text, p);
+    }
+}
+
+TEST(LZ77Index_LocateMin, AllSameChar) {
+    const std::string text = "aaaaaaaaaaaaaaaa";
+    for (const std::string p : {"aa", "aaa", "aaaa"}) {
+        SCOPED_TRACE("pattern=" + p);
+        check_locate_min(text, p);
+    }
+}
+
+TEST(LZ77Index_LocateMin, DNA_Synthetic) {
+    const std::string text = "AAACCCGGGTTTTAAACCC";
+    for (const std::string p : {"AAA", "CCC", "AAACCC", "GGG"}) {
+        SCOPED_TRACE("pattern=" + p);
+        check_locate_min(text, p);
+    }
+}
+
+TEST(LZ77Index_LocateMin, NoMatch) {
+    LZ77Index idx;
+    idx.build("abracadabra");
+    EXPECT_EQ(idx.locate_min("xyz"), SIZE_MAX);
+}
+
+TEST(LZ77Index_LocateMin, ShortPatterns) {
+    LZ77Index idx;
+    idx.build("abracadabra");
+    EXPECT_EQ(idx.locate_min(""),  SIZE_MAX);
+    EXPECT_EQ(idx.locate_min("a"), SIZE_MAX);
+}
+
+TEST(LZ77Index_LocateMin, ConsistencyWithCount) {
+    const std::string text = "ACGTACGTACGTACGT";
+    LZ77Index idx;
+    idx.build(text);
+
+    for (const std::string p : {"ACGT", "GT", "xyz", "ACGTACGT", "ZZ"}) {
+        SCOPED_TRACE("pattern=" + p);
+        const size_t cnt = idx.count(p);
+        const size_t mn  = idx.locate_min(p);
+        if (cnt > 0) {
+            EXPECT_NE(mn, SIZE_MAX) << "count>0 pero locate_min retornó vacío";
+        } else {
+            EXPECT_EQ(mn, SIZE_MAX) << "count=0 pero locate_min retornó algo";
+        }
+    }
+}

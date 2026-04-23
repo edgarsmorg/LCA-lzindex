@@ -73,6 +73,16 @@ public:
      */
     std::pair<size_t, size_t> locate_extremal(const std::string& pattern) const;
 
+    /**
+     * Posición mínima entre ocurrencias primarias de pattern.
+     *
+     * Equivale a locate_extremal(pattern).first pero en O(m² · t_ψ + m · log² z)
+     * en vez de O(m² · t_ψ + occ_prim · log z): no enumera puntos.
+     *
+     * Retorna SIZE_MAX si no hay ocurrencias primarias.
+     */
+    size_t locate_min(const std::string& pattern) const;
+
     // ── Accesores ─────────────────────────────────────────────────────────────
     /// Tamaño del texto indexado (incluyendo centinela '\0')
     size_t text_size()    const { return csa_fwd_.size(); }

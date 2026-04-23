@@ -133,4 +133,40 @@ std::pair<size_t, size_t> LZ77Index::locate_extremal(const std::string& pattern)
                  : std::make_pair(SIZE_MAX, size_t(0));
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// locate_min()
+// ─────────────────────────────────────────────────────────────────────────────
+
+size_t LZ77Index::locate_min(const std::string& pattern) const {
+    const size_t m = pattern.size();
+    if (m < 2 || grid_.point_count() == 0) return SIZE_MAX;
+
+    const size_t n = csa_fwd_.size();
+    size_t pos_min = SIZE_MAX;
+
+    for (size_t i = 1; i < m; ++i) {
+        size_t sp_r = 0, ep_r = n - 1;
+        sdsl::backward_search(csa_fwd_, 0, n - 1,
+                              pattern.begin() + i, pattern.end(),
+                              sp_r, ep_r);
+        if (sp_r > ep_r) continue;
+
+        const std::string left_rev(pattern.rbegin() + (m - i), pattern.rend());
+        size_t sp_l = 0, ep_l = n - 1;
+        sdsl::backward_search(csa_rev_, 0, n - 1,
+                              left_rev.begin(), left_rev.end(),
+                              sp_l, ep_l);
+        if (sp_l > ep_l) continue;
+
+        const auto r = grid_.query_min_2d(sp_r, ep_r, sp_l, ep_l);
+        if (r.count == 0) continue;
+
+        assert(r.boundary_min >= i && "boundary_min < split: ocurrencia fuera de texto");
+        const size_t p = r.boundary_min - i;
+        if (p < pos_min) pos_min = p;
+    }
+
+    return pos_min;
+}
+
 }  // namespace lz77tax
