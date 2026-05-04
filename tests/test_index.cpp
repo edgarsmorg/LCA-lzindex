@@ -15,29 +15,42 @@ using namespace lz77tax;
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Cuenta pares (ocurrencia p, boundary k) donde P cruza un límite de frase.
- * Una ocurrencia en p cruza boundary b = phrases[k+1].start_pos si:
- *   p < b  &&  b <= p + m - 1
- * (equivalentemente: b ∈ (p, p+m-1], i.e., el boundary cae dentro del patrón,
- *  no en el primer ni el último carácter porque la posición b es el inicio de la
- *  siguiente frase — el carácter text[p] es el prefijo de la frase, no el inicio).
+ * Cuenta pares (ocurrencia p, boundary k) primarios: crossings + end-aligned.
  *
- * NOTA: las frases están parseadas sobre text_s = text + '\0'. Las boundaries
- * con start_pos >= text.size() (la frase del centinela) no se cuentan.
+ * Crossing: b = phrases[k+1].start_pos cae estrictamente dentro del patrón
+ *   → p < b && b <= p+m-1
+ *
+ * End-aligned (special): P termina en el trailing_char de la frase k
+ *   → p + m - 1 == end_k  (= phrases[k].start_pos + phrases[k].length)
+ *   → phrase_total_len_k >= m  (P cabe en la frase)
+ *
+ * Cada condición genera exactamente un par; no hay solapamiento entre ellas
+ * para el mismo boundary (crossings requieren b dentro de P; special requiere
+ * b = p+m, que está justo después).
  */
 static size_t bf_primary_count(const std::string& text,
                                 const std::string& pattern,
                                 const LZ77Parsing& phrases) {
     const size_t m = pattern.size();
-    if (m == 0) return 0;
+    // El índice retorna 0 para m < 2 (mismo contrato que count()).
+    if (m < 2) return 0;
 
     size_t count = 0;
     for (size_t p = 0; p + m <= text.size(); ++p) {
         if (text.compare(p, m, pattern) != 0) continue;
+
+        // Crossings
         for (size_t k = 0; k + 1 < phrases.size(); ++k) {
             const size_t b = phrases[k + 1].start_pos;
             if (b >= text.size()) continue;  // boundary de centinela
             if (p < b && b <= p + m - 1) count++;
+        }
+
+        // End-aligned (special): P ends at end_k
+        for (size_t k = 0; k + 1 < phrases.size(); ++k) {
+            const size_t end_k = phrases[k].start_pos + phrases[k].length;
+            if (end_k >= text.size()) continue;  // frase centinela
+            if (phrases[k].length + 1 >= m && p + m - 1 == end_k) count++;
         }
     }
     return count;
@@ -204,8 +217,9 @@ TEST(LZ77Index_Accessors, GridPointsIsPhrasesMinusOne) {
 
 /**
  * Brute-force para locate_extremal: retorna {pos_min, pos_max} de las
- * posiciones de inicio de las ocurrencias primarias (las que cruzan al menos
- * un boundary de frase) del patrón en el texto.
+ * posiciones de inicio de las ocurrencias primarias del patrón en el texto.
+ *
+ * Primaria = crossing (b dentro del patrón) O end-aligned (P termina en end_k).
  */
 static std::pair<size_t, size_t> bf_locate_extremal(
         const std::string& text,
@@ -216,15 +230,26 @@ static std::pair<size_t, size_t> bf_locate_extremal(
 
     for (size_t p = 0; p + m <= text.size(); ++p) {
         if (text.compare(p, m, pattern) != 0) continue;
-        for (size_t k = 0; k + 1 < phrases.size(); ++k) {
+
+        bool is_primary = false;
+
+        // Crossing: boundary b cae estrictamente dentro del patrón
+        for (size_t k = 0; k + 1 < phrases.size() && !is_primary; ++k) {
             const size_t b = phrases[k + 1].start_pos;
-            if (b >= text.size()) continue;  // boundary del centinela
-            if (p < b && b <= p + m - 1) {
-                // Ocurrencia primaria en p
-                if (p < pos_min) pos_min = p;
-                if (p > pos_max) pos_max = p;
-                break;  // basta un boundary cruzado para que sea primaria
-            }
+            if (b >= text.size()) continue;
+            if (p < b && b <= p + m - 1) is_primary = true;
+        }
+
+        // End-aligned: P termina en el trailing_char de la frase k
+        for (size_t k = 0; k + 1 < phrases.size() && !is_primary; ++k) {
+            const size_t end_k = phrases[k].start_pos + phrases[k].length;
+            if (end_k >= text.size()) continue;
+            if (phrases[k].length + 1 >= m && p + m - 1 == end_k) is_primary = true;
+        }
+
+        if (is_primary) {
+            if (p < pos_min) pos_min = p;
+            if (p > pos_max) pos_max = p;
         }
     }
     return {pos_min, pos_max};

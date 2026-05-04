@@ -55,12 +55,29 @@ void LZ77Index::build(const LZ77Parsing& phrases,
 size_t LZ77Index::count(const std::string& pattern) const {
     const size_t m = pattern.size();
 
-    // Un patrón de longitud 0 o 1 no puede cruzar ningún boundary.
+    // Un patrón de longitud 0 o 1 no puede ser primario (crossing ni end-aligned).
     if (m < 2 || grid_.point_count() == 0) return 0;
 
     const size_t n = csa_fwd_.size();
     size_t total = 0;
 
+    // Precomputar reverse(P) una vez — usado en el caso especial y reutilizable.
+    const std::string rev_p(pattern.rbegin(), pattern.rend());
+
+    // ── Special: P termina en el trailing_char de alguna frase k ─────────────
+    // Equivalente al split degenerado i=m: P[0..m-1] | vacío.
+    {
+        size_t sp_rev = 0, ep_rev = n - 1;
+        sdsl::backward_search(csa_rev_, 0, n - 1,
+                              rev_p.begin(), rev_p.end(),
+                              sp_rev, ep_rev);
+        if (sp_rev <= ep_rev) {
+            const auto sp = grid_.query_special(sp_rev, ep_rev, m);
+            total += sp.count;
+        }
+    }
+
+    // ── Crossings: P[0..i-1] | P[i..m-1] con i = 1..m-1 ────────────────────
     for (size_t i = 1; i < m; ++i) {
         // ── Lado derecho: P[i..m-1] en SA forward ────────────────────────────
         size_t sp_r = 0, ep_r = n - 1;
@@ -98,6 +115,25 @@ std::pair<size_t, size_t> LZ77Index::locate_extremal(const std::string& pattern)
     size_t pos_min = SIZE_MAX, pos_max = 0;
     bool found = false;
 
+    const std::string rev_p(pattern.rbegin(), pattern.rend());
+
+    // ── Special: P termina en el trailing_char de alguna frase k ─────────────
+    {
+        size_t sp_rev = 0, ep_rev = n - 1;
+        sdsl::backward_search(csa_rev_, 0, n - 1,
+                              rev_p.begin(), rev_p.end(),
+                              sp_rev, ep_rev);
+        if (sp_rev <= ep_rev) {
+            const auto sp = grid_.query_special(sp_rev, ep_rev, m);
+            if (sp.count > 0) {
+                if (sp.occ_min_pos < pos_min) pos_min = sp.occ_min_pos;
+                if (sp.occ_max_pos > pos_max) pos_max = sp.occ_max_pos;
+                found = true;
+            }
+        }
+    }
+
+    // ── Crossings: P[0..i-1] | P[i..m-1] con i = 1..m-1 ────────────────────
     for (size_t i = 1; i < m; ++i) {
         // ── Lado derecho: P[i..m-1] en SA forward ────────────────────────────
         size_t sp_r = 0, ep_r = n - 1;
@@ -118,9 +154,6 @@ std::pair<size_t, size_t> LZ77Index::locate_extremal(const std::string& pattern)
         const auto ext = grid_.query_extremal(sp_r, ep_r, sp_l, ep_l);
         if (ext.count == 0) continue;
 
-        // Para el split i, la ocurrencia del patrón empieza en boundary - i.
-        // boundary = start_{k+1} >= i porque el patrón cabe en T[p..p+m-1].
-        assert(ext.boundary_min >= i && "boundary_min < split: ocurrencia fuera de texto");
         const size_t p_min = ext.boundary_min - i;
         const size_t p_max = ext.boundary_max - i;
 

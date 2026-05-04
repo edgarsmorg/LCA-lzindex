@@ -117,6 +117,19 @@ public:
     MinResult query_min_2d(size_t sp_right, size_t ep_right,
                            size_t sp_left,  size_t ep_left) const;
 
+    /**
+     * Consulta especial para patrones end-aligned.
+     * Retorna ocurrencias donde el patrón termina exactamente al final de la frase k,
+     * siempre y cuando quepa en la frase (phrase_total_len_ >= plen).
+     */
+    struct SpecialResult {
+        size_t count;
+        size_t occ_min_pos;
+        size_t occ_max_pos;
+    };
+
+    SpecialResult query_special(size_t sp_rev, size_t ep_rev, size_t plen) const;
+
     // ── Accesores ─────────────────────────────────────────────────────────────
     /// Número de puntos en la grilla (= z-1 para z frases)
     size_t point_count() const { return wt_.size(); }
@@ -143,12 +156,14 @@ private:
     sdsl::sd_vector<>::rank_1_type  rank_rev_;
     sdsl::int_vector<>              text_pos_;        ///< text_pos_[j] = start_{k+1}, compacto
     std::vector<size_t>             text_pos_plain_;  ///< copia como vector<size_t> para WtMinRmq
+    sdsl::int_vector<>              phrase_total_len_;///< phrase_total_len_[j] = start_{k+1} - start_k
     WtMinRmq                        wt_min_rmq_;      ///< WT+RMQ<min> topológico
 
     /// Núcleo compartido: recibe las z-1 coordenadas y los boundaries start_{k+1},
     /// construye bv_fwd_, bv_rev_, wt_ y text_pos_.
     void build_from_coords(const std::vector<std::pair<size_t, size_t>>& coords,
                            const std::vector<size_t>& boundaries,
+                           const std::vector<size_t>& phrase_lens,
                            size_t n);
 };
 

@@ -17,10 +17,12 @@ namespace lz77tax {
 void Grid2D::build_from_coords(
         const std::vector<std::pair<size_t, size_t>>& coords,
         const std::vector<size_t>& boundaries,
+        const std::vector<size_t>& phrase_lens,
         size_t n) {
 
     const size_t z1 = coords.size();  // z-1 puntos
     assert(boundaries.size() == z1 && "coords y boundaries deben tener el mismo tamaño");
+    assert(phrase_lens.size() == z1 && "coords y phrase_lens deben tener el mismo tamaño");
 
     if (z1 == 0) {
         // Texto de 1 frase: grilla vacía, estructuras en estado default.
@@ -60,6 +62,7 @@ void Grid2D::build_from_coords(
     // text_pos_ compact: valores en [0, n-1], width = ceil(log2(n)) bits
     const uint8_t tp_w = n > 1 ? static_cast<uint8_t>(sdsl::bits::hi(n - 1) + 1) : 1;
     text_pos_ = sdsl::int_vector<>(z1, 0, tp_w);
+    phrase_total_len_ = sdsl::int_vector<>(z1, 0, tp_w);
 
     for (size_t k = 0; k < z1; ++k) {
         const size_t x = coords[k].first;
@@ -70,8 +73,9 @@ void Grid2D::build_from_coords(
         const size_t y_rel = rank_rev_(y);
         assert(j < z1 && "índice wt_ fuera de rango");
         assert(y_rel < z1 && "y_rel fuera de rango");
-        R[j]         = y_rel;
-        text_pos_[j] = boundaries[k];
+        R[j]                 = y_rel;
+        text_pos_[j]         = boundaries[k];
+        phrase_total_len_[j] = phrase_lens[k];
     }
 
     // shadow plain para WtMinRmq (pasa en cada consulta)
@@ -141,6 +145,7 @@ void Grid2D::build(const LZ77Parsing& phrases, const std::string& text) {
     // el índice j = n-2-end_k.
     std::vector<std::pair<size_t, size_t>> coords(z - 1);
     std::vector<size_t> boundaries(z - 1);
+    std::vector<size_t> phrase_lens(z - 1);
     for (size_t k = 0; k < z - 1; ++k) {
         const size_t end_k    = phrases[k].start_pos + phrases[k].length;
         const size_t start_k1 = phrases[k + 1].start_pos;
@@ -151,11 +156,12 @@ void Grid2D::build(const LZ77Parsing& phrases, const std::string& text) {
         assert(end_k < n - 1   && "end_k apunta al centinela — la última frase no debe incluirse");
         assert(n >= 2 + end_k  && "n-2-end_k subflow");
 
-        coords[k]     = { isa[start_k1], isa_rev[n - 2 - end_k] };
-        boundaries[k] = start_k1;
+        coords[k]      = { isa[start_k1], isa_rev[n - 2 - end_k] };
+        boundaries[k]  = start_k1;
+        phrase_lens[k] = phrases[k].length + 1; // total length including trailing char
     }
 
-    build_from_coords(coords, boundaries, n);
+    build_from_coords(coords, boundaries, phrase_lens, n);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -172,6 +178,7 @@ void Grid2D::build(const LZ77Parsing& phrases,
 
     std::vector<std::pair<size_t, size_t>> coords(z - 1);
     std::vector<size_t> boundaries(z - 1);
+    std::vector<size_t> phrase_lens(z - 1);
     for (size_t k = 0; k < z - 1; ++k) {
         const size_t end_k    = phrases[k].start_pos + phrases[k].length;
         const size_t start_k1 = phrases[k + 1].start_pos;
@@ -179,11 +186,12 @@ void Grid2D::build(const LZ77Parsing& phrases,
         // csa_fwd.isa[i] resuelve ISA[i] en O(t_psi) sin materializar el array.
         // Y_k = csa_rev.isa[n-2-end_k]: csa_rev debe estar construido sobre
         // reverse(text_raw) + '\0' (no reverse(text_with_sentinel)).
-        coords[k]     = { csa_fwd.isa[start_k1], csa_rev.isa[n - 2 - end_k] };
-        boundaries[k] = start_k1;
+        coords[k]      = { csa_fwd.isa[start_k1], csa_rev.isa[n - 2 - end_k] };
+        boundaries[k]  = start_k1;
+        phrase_lens[k] = phrases[k].length + 1;
     }
 
-    build_from_coords(coords, boundaries, n);
+    build_from_coords(coords, boundaries, phrase_lens, n);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -261,6 +269,44 @@ Grid2D::MinResult Grid2D::query_min_2d(size_t sp_right, size_t ep_right,
                                                 text_pos_plain_);
     if (r.count == 0) return {0, SIZE_MAX};
     return {r.count, text_pos_plain_[r.argmin_global]};
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// query_special()
+// ─────────────────────────────────────────────────────────────────────────────
+
+Grid2D::SpecialResult Grid2D::query_special(size_t sp_rev, size_t ep_rev, size_t plen) const {
+    if (wt_.size() == 0) return {0, SIZE_MAX, 0};
+
+    // Para occurrences special, iteramos sobre los Y_k en [sp_rev, ep_rev].
+    // X_k no está restringido (puede ser cualquier parte del texto).
+    const size_t lb  = 0;
+    const size_t rb  = wt_.size() - 1;
+
+    const size_t vlb = rank_rev_(sp_rev);
+    if (ep_rev + 1 > bv_rev_.size()) return {0, SIZE_MAX, 0};
+    const size_t vrb = rank_rev_(ep_rev + 1);
+    if (vrb == 0 || vlb >= vrb) return {0, SIZE_MAX, 0};
+    const size_t vrb_val = vrb - 1;
+
+    if (vlb > vrb_val) return {0, SIZE_MAX, 0};
+
+    const auto pts = wt_.range_search_2d(lb, rb, vlb, vrb_val).second;
+
+    size_t count = 0;
+    size_t occ_min = SIZE_MAX;
+    size_t occ_max = 0;
+
+    for (const auto& [wt_idx, y_rel] : pts) {
+        if (phrase_total_len_[wt_idx] >= plen) {
+            count++;
+            const size_t occ_pos = text_pos_[wt_idx] - plen;
+            if (occ_pos < occ_min) occ_min = occ_pos;
+            if (occ_pos > occ_max) occ_max = occ_pos;
+        }
+    }
+
+    return {count, occ_min, occ_max};
 }
 
 }  // namespace lz77tax
