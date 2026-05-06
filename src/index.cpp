@@ -177,6 +177,22 @@ size_t LZ77Index::locate_min(const std::string& pattern) const {
     const size_t n = csa_fwd_.size();
     size_t pos_min = SIZE_MAX;
 
+    const std::string rev_p(pattern.rbegin(), pattern.rend());
+
+    // ── Special: P termina en el trailing_char de alguna frase k ─────────────
+    {
+        size_t sp_rev = 0, ep_rev = n - 1;
+        sdsl::backward_search(csa_rev_, 0, n - 1,
+                              rev_p.begin(), rev_p.end(),
+                              sp_rev, ep_rev);
+        if (sp_rev <= ep_rev) {
+            const auto sp = grid_.query_special(sp_rev, ep_rev, m);
+            if (sp.count > 0 && sp.occ_min_pos < pos_min)
+                pos_min = sp.occ_min_pos;
+        }
+    }
+
+    // ── Crossings: P[0..i-1] | P[i..m-1] con i = 1..m-1 ────────────────────
     for (size_t i = 1; i < m; ++i) {
         size_t sp_r = 0, ep_r = n - 1;
         sdsl::backward_search(csa_fwd_, 0, n - 1,

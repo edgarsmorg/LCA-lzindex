@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <climits>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -420,4 +421,103 @@ TEST(LZ77Index_LocateMin, ConsistencyWithCount) {
             EXPECT_EQ(mn, SIZE_MAX) << "count=0 pero locate_min retornó algo";
         }
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Task 5: Tests de correctitud con special occurrences
+// ─────────────────────────────────────────────────────────────────────────────
+
+// "aabaab" / "ab": la ocurrencia en p=1 es end-aligned (especial); la de p=4
+// queda dentro del frase k=2 (secundaria, correctamente ignorada).
+// Sin el path special, idx.count devolvería 0.
+TEST(LZ77Index_SpecialCorrectness, SpecialOnlyText) {
+    const std::string text    = "aabaab";
+    const std::string pattern = "ab";
+
+    LZ77Index idx;
+    idx.build(text);
+
+    // Brute-force: 1 primaria (end-aligned en p=1); p=4 es secundaria.
+    ASSERT_EQ(bf_primary_count(text, pattern, idx.phrases()), 1u)
+        << "bf_primary_count inesperado";
+
+    EXPECT_EQ(idx.count(pattern), 1u);
+    EXPECT_EQ(idx.locate_min(pattern), 1u);
+
+    const auto [mn, mx] = idx.locate_extremal(pattern);
+    EXPECT_EQ(mn, 1u);
+    EXPECT_EQ(mx, 1u);
+}
+
+// Para textos con crossings Y specials, count == bf sin duplicados.
+TEST(LZ77Index_SpecialCorrectness, NoDoubleCount) {
+    for (const std::string text : {
+            std::string("aabaab"),
+            std::string("ACGTACGTACGT"),
+            std::string("abracadabra"),
+            std::string("AAACCCGGGTTTTAAACCC")}) {
+        SCOPED_TRACE("text=" + text);
+        LZ77Index idx;
+        idx.build(text);
+
+        for (size_t plen = 2; plen <= std::min(text.size(), size_t(6)); ++plen) {
+            for (size_t s = 0; s + plen <= text.size(); s += 3) {
+                const std::string p = text.substr(s, plen);
+                EXPECT_EQ(idx.count(p),
+                          bf_primary_count(text, p, idx.phrases()))
+                    << "plen=" << plen << " s=" << s;
+            }
+        }
+    }
+}
+
+// Si idx.count(P) > 0 entonces P existe en T (sdsl::count > 0).
+// idx.count mide pares (ocurrencia, split_i), no posiciones únicas,
+// por lo que puede superar sdsl::count — pero implica existencia real.
+TEST(LZ77Index_SpecialCorrectness, CountImpliesExistence) {
+    const std::string text = "abracadabra";
+    sdsl::csa_wt<> csa;
+    sdsl::construct_im(csa, text, 1);
+
+    LZ77Index idx;
+    idx.build(text);
+
+    for (const std::string p : {"ab", "abr", "ra", "bra", "cada",
+                                  "abra", "a", "x", "aa", "abracadabra"}) {
+        SCOPED_TRACE("pattern=" + p);
+        if (idx.count(p) > 0) {
+            EXPECT_GT(sdsl::count(csa, p.begin(), p.end()), 0u)
+                << "idx.count>0 pero sdsl::count=0 para pattern=" << p;
+        }
+    }
+}
+
+// 100 substrings aleatorios de texto repetitivo: count == bf_primary_count.
+TEST(LZ77Index_SpecialCorrectness, GroundTruth100Patterns) {
+    const std::string unit = "ACGTTTACGTAAACGT";
+    std::string text;
+    for (int i = 0; i < 8; ++i) text += unit;  // 128 chars
+
+    LZ77Index idx;
+    idx.build(text);
+
+    std::mt19937 rng(42);
+    int mismatches = 0;
+    for (int trial = 0; trial < 100; ++trial) {
+        const size_t plen = 2 + rng() % 7;
+        if (plen > text.size()) continue;
+        const size_t pos = rng() % (text.size() - plen + 1);
+        const std::string p = text.substr(pos, plen);
+
+        const size_t got = idx.count(p);
+        const size_t exp = bf_primary_count(text, p, idx.phrases());
+        if (got != exp) {
+            ++mismatches;
+            ADD_FAILURE()
+                << "trial=" << trial << " pos=" << pos
+                << " plen=" << plen << " pattern=" << p
+                << "  got=" << got << " exp=" << exp;
+        }
+    }
+    EXPECT_EQ(mismatches, 0);
 }
