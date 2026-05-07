@@ -51,7 +51,7 @@ public:
      * @param sigma     cardinalidad del alfabeto de y (= número de puntos, z-1)
      */
     void build(const std::vector<size_t>& y_values,
-               const std::vector<size_t>& text_pos,
+               const sdsl::int_vector<>& text_pos,
                size_t sigma);
 
     // ── Consulta ──────────────────────────────────────────────────────────────
@@ -63,7 +63,7 @@ public:
      */
     ArgminResult range_argmin_2d(size_t x_lo, size_t x_hi,
                                  size_t y_lo, size_t y_hi,
-                                 const std::vector<size_t>& text_pos) const;
+                                 const sdsl::int_vector<>& text_pos) const;
 
     // ── Métricas ──────────────────────────────────────────────────────────────
     size_t size()          const { return n_; }
@@ -104,7 +104,7 @@ private:
     void query_rec(const Node* node,
                    size_t x_lo, size_t x_hi,
                    size_t y_lo, size_t y_hi,
-                   const std::vector<size_t>& tp_global,
+                   const sdsl::int_vector<>& tp_global,
                    size_t& count_acc,
                    size_t& best_value,
                    size_t& best_global) const;

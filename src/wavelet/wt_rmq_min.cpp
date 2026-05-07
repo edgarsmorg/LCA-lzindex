@@ -11,14 +11,16 @@ namespace lz77tax {
 // ─────────────────────────────────────────────────────────────────────────────
 
 void WtMinRmq::build(const std::vector<size_t>& y_values,
-                     const std::vector<size_t>& text_pos,
+                     const sdsl::int_vector<>& text_pos,
                      size_t sigma) {
     assert(y_values.size() == text_pos.size());
     n_     = y_values.size();
     sigma_ = sigma;
     root_.reset();
     if (n_ == 0 || sigma_ == 0) return;
-    root_ = build_rec(y_values, text_pos, 0, sigma_ - 1,
+    // Convertir a vector<size_t> para build_rec (temporal, liberado al salir)
+    std::vector<size_t> tps_init(text_pos.begin(), text_pos.end());
+    root_ = build_rec(y_values, std::move(tps_init), 0, sigma_ - 1,
                       /*parent=*/nullptr, /*is_right=*/false);
 }
 
@@ -99,7 +101,7 @@ size_t WtMinRmq::unwind_to_root(const Node* node, size_t local_j) {
 void WtMinRmq::query_rec(const Node* node,
                          size_t x_lo, size_t x_hi,
                          size_t y_lo, size_t y_hi,
-                         const std::vector<size_t>& tp_global,
+                         const sdsl::int_vector<>& tp_global,
                          size_t& count_acc,
                          size_t& best_value,
                          size_t& best_global) const {
@@ -139,7 +141,7 @@ void WtMinRmq::query_rec(const Node* node,
 WtMinRmq::ArgminResult
 WtMinRmq::range_argmin_2d(size_t x_lo, size_t x_hi,
                           size_t y_lo, size_t y_hi,
-                          const std::vector<size_t>& text_pos) const {
+                          const sdsl::int_vector<>& text_pos) const {
     if (n_ == 0 || !root_ || x_lo > x_hi) return {0, SIZE_MAX};
     size_t count = 0, best_v = SIZE_MAX, best_i = SIZE_MAX;
     query_rec(root_.get(), x_lo, x_hi, y_lo, y_hi,

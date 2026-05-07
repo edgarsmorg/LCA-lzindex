@@ -114,21 +114,34 @@ int main(int argc, char** argv) {
     print_row("  PROYECCIÓN (sin CSA)", grid_total, n);
 
     // ── Benchmark locate_min vs locate_extremal ───────────────────────────────
-    std::cout << "\n=== Bench: locate_min vs locate_extremal (1000 patrones) ===\n";
-
-    // Generar 1000 patrones aleatorios de longitud 8..32
-    const size_t N_PATTERNS = 1000;
-    std::mt19937 rng(42);
-    std::uniform_int_distribution<size_t> pos_dis(0, n - 33);
-    std::uniform_int_distribution<size_t> len_dis(8, 32);
-
     std::vector<std::string> patterns;
-    patterns.reserve(N_PATTERNS);
-    for (size_t i = 0; i < N_PATTERNS; ++i) {
-        const size_t pos = pos_dis(rng);
-        const size_t len = len_dis(rng);
-        patterns.push_back(text.substr(pos, len));
+
+    // --patterns=<file>: un patrón por línea. Si no se provee, genera 1000 aleatorios.
+    std::string patterns_source = "aleatorios (8–32 bp)";
+    if (argc >= 3 && std::string(argv[2]).rfind("--patterns=", 0) == 0) {
+        const std::string path = std::string(argv[2]).substr(11);
+        std::ifstream pf(path);
+        if (!pf) { std::cerr << "no se puede abrir patterns: " << path << "\n"; return 1; }
+        std::string line;
+        while (std::getline(pf, line))
+            if (!line.empty()) patterns.push_back(line);
+        patterns_source = path + " (" + std::to_string(patterns.size()) + " patrones)";
+    } else {
+        const size_t N_PATTERNS = 1000;
+        std::mt19937 rng(42);
+        std::uniform_int_distribution<size_t> pos_dis(0, n - 33);
+        std::uniform_int_distribution<size_t> len_dis(8, 32);
+        patterns.reserve(N_PATTERNS);
+        for (size_t i = 0; i < N_PATTERNS; ++i) {
+            const size_t pos = pos_dis(rng);
+            const size_t len = len_dis(rng);
+            patterns.push_back(text.substr(pos, len));
+        }
     }
+
+    const size_t N_PATTERNS = patterns.size();
+    std::cout << "\n=== Bench: locate_min vs locate_extremal ===\n";
+    std::cout << "patrones: " << patterns_source << "\n";
 
     // Warmup
     for (const auto& p : patterns) { (void)idx.locate_min(p); }

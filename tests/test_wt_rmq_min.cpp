@@ -4,10 +4,19 @@
 
 #include <algorithm>
 #include <climits>
+#include <numeric>
 #include <random>
 #include <vector>
 
+#include <sdsl/int_vector.hpp>
+
 using namespace lz77tax;
+
+static sdsl::int_vector<> to_iv(const std::vector<size_t>& v) {
+    sdsl::int_vector<> iv(v.size(), 0, 64);
+    for (size_t i = 0; i < v.size(); ++i) iv[i] = v[i];
+    return iv;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -35,14 +44,15 @@ static void check_all_rectangles(const std::vector<size_t>& ys,
     const size_t n = ys.size();
     if (n == 0) return;
 
+    const sdsl::int_vector<> vals_iv = to_iv(vals);
     WtMinRmq wt;
-    wt.build(ys, vals, sigma);
+    wt.build(ys, vals_iv, sigma);
 
     for (size_t x0 = 0; x0 < n; ++x0) {
         for (size_t x1 = x0; x1 < n; ++x1) {
             for (size_t y0 = 0; y0 < sigma; ++y0) {
                 for (size_t y1 = y0; y1 < sigma; ++y1) {
-                    const auto got = wt.range_argmin_2d(x0, x1, y0, y1, vals);
+                    const auto got = wt.range_argmin_2d(x0, x1, y0, y1, vals_iv);
                     const auto exp = brute_force_argmin(ys, vals, x0, x1, y0, y1);
 
                     ASSERT_EQ(got.count, exp.count)
@@ -68,20 +78,21 @@ static void check_all_rectangles(const std::vector<size_t>& ys,
 
 TEST(WtMinRmq_Build, Empty) {
     WtMinRmq wt;
-    wt.build({}, {}, 0);
+    sdsl::int_vector<> empty_iv;
+    wt.build({}, empty_iv, 0);
     EXPECT_EQ(wt.size(), 0u);
-    const auto r = wt.range_argmin_2d(0, 0, 0, 0, {});
+    const auto r = wt.range_argmin_2d(0, 0, 0, 0, empty_iv);
     EXPECT_EQ(r.count, 0u);
     EXPECT_EQ(r.argmin_global, SIZE_MAX);
 }
 
 TEST(WtMinRmq_Build, SingleElement) {
     WtMinRmq wt;
-    wt.build({0}, {42}, 1);
+    const sdsl::int_vector<> vals_iv = to_iv({42});
+    wt.build({0}, vals_iv, 1);
     EXPECT_EQ(wt.size(), 1u);
 
-    const std::vector<size_t> vals = {42};
-    const auto r = wt.range_argmin_2d(0, 0, 0, 0, vals);
+    const auto r = wt.range_argmin_2d(0, 0, 0, 0, vals_iv);
     EXPECT_EQ(r.count, 1u);
     EXPECT_EQ(r.argmin_global, 0u);
 }
@@ -92,21 +103,22 @@ TEST(WtMinRmq_Build, TwoElements) {
     WtMinRmq wt;
     const std::vector<size_t> ys   = {1, 0};
     const std::vector<size_t> vals = {10, 5};
-    wt.build(ys, vals, 2);
+    const sdsl::int_vector<> vals_iv = to_iv(vals);
+    wt.build(ys, vals_iv, 2);
     EXPECT_EQ(wt.size(), 2u);
 
     // Todo el rectángulo: argmin = índice 1 (val=5)
-    const auto r = wt.range_argmin_2d(0, 1, 0, 1, vals);
+    const auto r = wt.range_argmin_2d(0, 1, 0, 1, vals_iv);
     EXPECT_EQ(r.count, 2u);
     EXPECT_EQ(vals[r.argmin_global], 5u);
 
     // Solo y=0: solo el punto x=1
-    const auto r2 = wt.range_argmin_2d(0, 1, 0, 0, vals);
+    const auto r2 = wt.range_argmin_2d(0, 1, 0, 0, vals_iv);
     EXPECT_EQ(r2.count, 1u);
     EXPECT_EQ(r2.argmin_global, 1u);
 
     // Solo y=1: solo el punto x=0
-    const auto r3 = wt.range_argmin_2d(0, 1, 1, 1, vals);
+    const auto r3 = wt.range_argmin_2d(0, 1, 1, 1, vals_iv);
     EXPECT_EQ(r3.count, 1u);
     EXPECT_EQ(r3.argmin_global, 0u);
 }
@@ -127,12 +139,13 @@ TEST(WtMinRmq_Query, ArgminMatchesBrute_AllSameY) {
     const size_t n = 6;
     const std::vector<size_t> ys(n, 0);
     const std::vector<size_t> vals = {5, 3, 8, 1, 7, 2};
+    const sdsl::int_vector<> vals_iv = to_iv(vals);
     WtMinRmq wt;
-    wt.build(ys, vals, 1);
+    wt.build(ys, vals_iv, 1);
 
     for (size_t x0 = 0; x0 < n; ++x0) {
         for (size_t x1 = x0; x1 < n; ++x1) {
-            const auto got = wt.range_argmin_2d(x0, x1, 0, 0, vals);
+            const auto got = wt.range_argmin_2d(x0, x1, 0, 0, vals_iv);
             const auto exp = brute_force_argmin(ys, vals, x0, x1, 0, 0);
             ASSERT_EQ(got.count, exp.count);
             if (exp.count > 0) {
@@ -152,8 +165,9 @@ TEST(WtMinRmq_Query, ArgminMatchesBrute_Random_Medium) {
     std::shuffle(ys.begin(),   ys.end(),   rng);
     std::shuffle(vals.begin(), vals.end(), rng);
 
+    const sdsl::int_vector<> vals_iv = to_iv(vals);
     WtMinRmq wt;
-    wt.build(ys, vals, n);
+    wt.build(ys, vals_iv, n);
 
     // 500 rectángulos aleatorios
     std::uniform_int_distribution<size_t> dis(0, n - 1);
@@ -163,7 +177,7 @@ TEST(WtMinRmq_Query, ArgminMatchesBrute_Random_Medium) {
         if (x0 > x1) std::swap(x0, x1);
         if (y0 > y1) std::swap(y0, y1);
 
-        const auto got = wt.range_argmin_2d(x0, x1, y0, y1, vals);
+        const auto got = wt.range_argmin_2d(x0, x1, y0, y1, vals_iv);
         const auto exp = brute_force_argmin(ys, vals, x0, x1, y0, y1);
 
         ASSERT_EQ(got.count, exp.count) << "trial=" << trial;
@@ -181,11 +195,12 @@ TEST(WtMinRmq_Query, ArgminMatchesBrute_Random_Medium) {
 TEST(WtMinRmq_Query, EmptyRectangle) {
     const std::vector<size_t> ys   = {0, 1, 2};
     const std::vector<size_t> vals = {10, 20, 30};
+    const sdsl::int_vector<> vals_iv = to_iv(vals);
     WtMinRmq wt;
-    wt.build(ys, vals, 3);
+    wt.build(ys, vals_iv, 3);
 
     // y_lo > y_hi implícito via rango vacío: y fuera de rango
-    const auto r = wt.range_argmin_2d(0, 2, 5, 10, vals);
+    const auto r = wt.range_argmin_2d(0, 2, 5, 10, vals_iv);
     EXPECT_EQ(r.count, 0u);
     EXPECT_EQ(r.argmin_global, SIZE_MAX);
 }
@@ -203,12 +218,13 @@ TEST(WtMinRmq_Query, ArgminGlobalIsValidIndex) {
     std::shuffle(ys.begin(),   ys.end(),   rng);
     std::shuffle(vals.begin(), vals.end(), rng);
 
+    const sdsl::int_vector<> vals_iv = to_iv(vals);
     WtMinRmq wt;
-    wt.build(ys, vals, n);
+    wt.build(ys, vals_iv, n);
 
     for (size_t x0 = 0; x0 < n; ++x0) {
         for (size_t x1 = x0; x1 < n; ++x1) {
-            const auto r = wt.range_argmin_2d(x0, x1, 0, n - 1, vals);
+            const auto r = wt.range_argmin_2d(x0, x1, 0, n - 1, vals_iv);
             if (r.count > 0) {
                 ASSERT_LT(r.argmin_global, n) << "índice global fuera de [0,n)";
                 // el índice global debe estar en el rango X consultado
@@ -226,8 +242,9 @@ TEST(WtMinRmq_Query, ArgminGlobalIsValidIndex) {
 TEST(WtMinRmq_Size, SizeBytesPositive) {
     const std::vector<size_t> ys   = {2, 0, 1, 3};
     const std::vector<size_t> vals = {5, 8, 2, 9};
+    const sdsl::int_vector<> vals_iv = to_iv(vals);
     WtMinRmq wt;
-    wt.build(ys, vals, 4);
+    wt.build(ys, vals_iv, 4);
 
     EXPECT_GT(wt.size_in_bytes(), 0u);
     const auto bd = wt.size_breakdown();

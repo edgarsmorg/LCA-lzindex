@@ -97,6 +97,7 @@ public:
     const Grid2D&      grid()    const { return grid_; }
     size_t csa_fwd_bytes()       const { return sdsl::size_in_bytes(csa_fwd_); }
     size_t csa_rev_bytes()       const { return sdsl::size_in_bytes(csa_rev_); }
+    const sdsl::csa_wt<>& csa_fwd() const { return csa_fwd_; }
 
 private:
     LZ77Parsing    phrases_;

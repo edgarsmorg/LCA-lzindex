@@ -78,20 +78,15 @@ void Grid2D::build_from_coords(
         phrase_total_len_[j] = phrase_lens[k];
     }
 
-    // shadow plain para WtMinRmq (pasa en cada consulta)
-    text_pos_plain_.resize(z1);
-    for (size_t j = 0; j < z1; ++j)
-        text_pos_plain_[j] = static_cast<size_t>(text_pos_[j]);
-
     // ── 4. Construir wt_int sobre R ───────────────────────────────────────────
     sdsl::construct_im(wt_, R);
 
-    // ── 5. Construir WtMinRmq sobre (ys=R, text_pos_plain_, sigma=z1) ─────────
+    // ── 5. Construir WtMinRmq sobre (ys=R, text_pos_, sigma=z1) ──────────────
     {
         std::vector<size_t> ys(z1);
         for (size_t j = 0; j < z1; ++j)
             ys[j] = static_cast<size_t>(R[j]);
-        wt_min_rmq_.build(ys, text_pos_plain_, z1);
+        wt_min_rmq_.build(ys, text_pos_, z1);
     }
 }
 
@@ -266,9 +261,9 @@ Grid2D::MinResult Grid2D::query_min_2d(size_t sp_right, size_t ep_right,
     if (vrb == 0 || vlb >= vrb) return {0, SIZE_MAX};
 
     const auto r = wt_min_rmq_.range_argmin_2d(lb, rb - 1, vlb, vrb - 1,
-                                                text_pos_plain_);
+                                                text_pos_);
     if (r.count == 0) return {0, SIZE_MAX};
-    return {r.count, text_pos_plain_[r.argmin_global]};
+    return {r.count, static_cast<size_t>(text_pos_[r.argmin_global])};
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

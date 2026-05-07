@@ -155,7 +155,6 @@ private:
     sdsl::sd_vector<>::rank_1_type  rank_fwd_;
     sdsl::sd_vector<>::rank_1_type  rank_rev_;
     sdsl::int_vector<>              text_pos_;        ///< text_pos_[j] = start_{k+1}, compacto
-    std::vector<size_t>             text_pos_plain_;  ///< copia como vector<size_t> para WtMinRmq
     sdsl::int_vector<>              phrase_total_len_;///< phrase_total_len_[j] = start_{k+1} - start_k
     WtMinRmq                        wt_min_rmq_;      ///< WT+RMQ<min> topológico
 

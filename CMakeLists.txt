@@ -21,6 +21,7 @@ include_directories(${CMAKE_SOURCE_DIR}/src ${SDSL_INCLUDE})
 set(PROJECT_SOURCES
     src/main.cpp
     src/index.cpp
+    src/mem/extractor.cpp
     src/lz77/parser.cpp
     src/lz77/grid.cpp
     src/wavelet/wt_rmq_min.cpp
@@ -91,6 +92,19 @@ target_include_directories(test_classify PRIVATE ${CMAKE_SOURCE_DIR}/src ${SDSL_
 target_link_libraries(test_classify PRIVATE GTest::gtest_main)
 target_compile_options(test_classify PRIVATE -O2)
 gtest_discover_tests(test_classify)
+
+add_executable(test_mem
+    tests/test_mem.cpp
+    src/index.cpp
+    src/mem/extractor.cpp
+    src/lz77/parser.cpp
+    src/lz77/grid.cpp
+    src/wavelet/wt_rmq_min.cpp
+)
+target_include_directories(test_mem PRIVATE ${CMAKE_SOURCE_DIR}/src ${SDSL_INCLUDE})
+target_link_libraries(test_mem PRIVATE GTest::gtest_main)
+target_compile_options(test_mem PRIVATE -O2)
+gtest_discover_tests(test_mem)
 
 # Habilitamos testing
 enable_testing()
