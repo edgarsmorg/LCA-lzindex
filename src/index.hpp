@@ -69,19 +69,27 @@ public:
      *   auto [lo, hi] = idx.locate_extremal(pattern);
      *   int lca_node  = classifier.classify_extremal(lo, hi);
      *
-     * Complejidad: O(m² · t_ψ + occ_prim · log z)
+     * Complejidad: O(m² · t_ψ + m · log² z) — usa query_min_2d + query_max_2d,
+     * sin enumerar puntos. Más eficiente que la versión anterior O(occ_prim · log z).
      */
     std::pair<size_t, size_t> locate_extremal(const std::string& pattern) const;
 
     /**
      * Posición mínima entre ocurrencias primarias de pattern.
      *
-     * Equivale a locate_extremal(pattern).first pero en O(m² · t_ψ + m · log² z)
-     * en vez de O(m² · t_ψ + occ_prim · log z): no enumera puntos.
-     *
+     * Complejidad: O(m² · t_ψ + m · log² z) — no enumera puntos.
      * Retorna SIZE_MAX si no hay ocurrencias primarias.
      */
     size_t locate_min(const std::string& pattern) const;
+
+    /**
+     * Posición máxima entre ocurrencias primarias de pattern.
+     *
+     * Simétrico a locate_min() usando WtMinRmq sobre valores de posición invertidos.
+     * Complejidad: O(m² · t_ψ + m · log² z) — no enumera puntos.
+     * Retorna SIZE_MAX si no hay ocurrencias primarias.
+     */
+    size_t locate_max(const std::string& pattern) const;
 
     // ── Accesores ─────────────────────────────────────────────────────────────
     /// Tamaño del texto indexado (incluyendo centinela '\0')

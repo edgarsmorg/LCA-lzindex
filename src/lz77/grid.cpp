@@ -51,7 +51,7 @@ void Grid2D::build_from_coords(
     }
     rank_rev_ = sdsl::sd_vector<>::rank_1_type(&bv_rev_);
 
-    // ── 3. Secuencia R[0..z-2] y array text_pos_ ─────────────────────────────
+    // ── 3. Secuencia R[0..z-2] y arrays text_pos_, phrase_total_len_ ─────────
     // R[rank_fwd(X_k)] = rank_rev(Y_k)
     // Ambos ranks son 0-indexed y forman permutaciones de {0..z-2} ya que
     // los X_k son distintos (ISA es permutación) e idem para Y_k.
@@ -61,8 +61,13 @@ void Grid2D::build_from_coords(
 
     // text_pos_ compact: valores en [0, n-1], width = ceil(log2(n)) bits
     const uint8_t tp_w = n > 1 ? static_cast<uint8_t>(sdsl::bits::hi(n - 1) + 1) : 1;
-    text_pos_ = sdsl::int_vector<>(z1, 0, tp_w);
-    phrase_total_len_ = sdsl::int_vector<>(z1, 0, tp_w);
+    text_pos_     = sdsl::int_vector<>(z1, 0, tp_w);
+    text_pos_inv_ = sdsl::int_vector<>(z1, 0, tp_w);
+
+    // phrase_total_len_ usa su propio ancho: max_phrase_len << n en textos repetitivos
+    const size_t max_pl = *std::max_element(phrase_lens.begin(), phrase_lens.end());
+    const uint8_t pl_w = max_pl > 0 ? static_cast<uint8_t>(sdsl::bits::hi(max_pl) + 1) : 1;
+    phrase_total_len_ = sdsl::int_vector<>(z1, 0, pl_w);
 
     for (size_t k = 0; k < z1; ++k) {
         const size_t x = coords[k].first;
@@ -75,18 +80,20 @@ void Grid2D::build_from_coords(
         assert(y_rel < z1 && "y_rel fuera de rango");
         R[j]                 = y_rel;
         text_pos_[j]         = boundaries[k];
+        text_pos_inv_[j]     = (n - 1) - boundaries[k];
         phrase_total_len_[j] = phrase_lens[k];
     }
 
     // ── 4. Construir wt_int sobre R ───────────────────────────────────────────
     sdsl::construct_im(wt_, R);
 
-    // ── 5. Construir WtMinRmq sobre (ys=R, text_pos_, sigma=z1) ──────────────
+    // ── 5. Construir WtMinRmq (argmin) y WtMaxRmq (argmin de invertidos) ─────
     {
         std::vector<size_t> ys(z1);
         for (size_t j = 0; j < z1; ++j)
             ys[j] = static_cast<size_t>(R[j]);
-        wt_min_rmq_.build(ys, text_pos_, z1);
+        wt_min_rmq_.build(ys, text_pos_,     z1);
+        wt_max_rmq_.build(ys, text_pos_inv_, z1);
     }
 }
 
@@ -302,6 +309,31 @@ Grid2D::SpecialResult Grid2D::query_special(size_t sp_rev, size_t ep_rev, size_t
     }
 
     return {count, occ_min, occ_max};
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// query_max_2d()
+// ─────────────────────────────────────────────────────────────────────────────
+
+Grid2D::MaxResult Grid2D::query_max_2d(size_t sp_right, size_t ep_right,
+                                        size_t sp_left,  size_t ep_left) const {
+    if (wt_max_rmq_.size() == 0) return {0, 0};
+
+    const size_t lb = rank_fwd_(sp_right);
+    if (ep_right + 1 > bv_fwd_.size()) return {0, 0};
+    const size_t rb = rank_fwd_(ep_right + 1);
+    if (rb == 0 || lb >= rb) return {0, 0};
+
+    const size_t vlb = rank_rev_(sp_left);
+    if (ep_left + 1 > bv_rev_.size()) return {0, 0};
+    const size_t vrb = rank_rev_(ep_left + 1);
+    if (vrb == 0 || vlb >= vrb) return {0, 0};
+
+    // argmin de text_pos_inv_ = argmax de text_pos_
+    const auto r = wt_max_rmq_.range_argmin_2d(lb, rb - 1, vlb, vrb - 1,
+                                                text_pos_inv_);
+    if (r.count == 0) return {0, 0};
+    return {r.count, static_cast<size_t>(text_pos_[r.argmin_global])};
 }
 
 }  // namespace lz77tax

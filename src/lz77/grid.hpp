@@ -118,6 +118,23 @@ public:
                            size_t sp_left,  size_t ep_left) const;
 
     /**
+     * Consulta extremal máxima usando WtMinRmq sobre valores invertidos (O(log² z)).
+     *
+     * Retorna {count, boundary_max} donde boundary_max = start_{k+1} máximo
+     * entre los puntos hallados. Si count==0, boundary_max = 0.
+     *
+     * Internamente usa wt_max_rmq_ construido sobre n-1-text_pos_[j]:
+     * argmin(invertido) == argmax(original).
+     */
+    struct MaxResult {
+        size_t count;        ///< 0 si rectángulo vacío
+        size_t boundary_max; ///< máximo start_{k+1}; 0 si count==0
+    };
+
+    MaxResult query_max_2d(size_t sp_right, size_t ep_right,
+                           size_t sp_left,  size_t ep_left) const;
+
+    /**
      * Consulta especial para patrones end-aligned.
      * Retorna ocurrencias donde el patrón termina exactamente al final de la frase k,
      * siempre y cuando quepa en la frase (phrase_total_len_ >= plen).
@@ -155,8 +172,10 @@ private:
     sdsl::sd_vector<>::rank_1_type  rank_fwd_;
     sdsl::sd_vector<>::rank_1_type  rank_rev_;
     sdsl::int_vector<>              text_pos_;        ///< text_pos_[j] = start_{k+1}, compacto
+    sdsl::int_vector<>              text_pos_inv_;    ///< text_pos_inv_[j] = n-1 - text_pos_[j]
     sdsl::int_vector<>              phrase_total_len_;///< phrase_total_len_[j] = start_{k+1} - start_k
     WtMinRmq                        wt_min_rmq_;      ///< WT+RMQ<min> topológico
+    WtMinRmq                        wt_max_rmq_;      ///< WT+RMQ<min> sobre invertidos → argmax
 
     /// Núcleo compartido: recibe las z-1 coordenadas y los boundaries start_{k+1},
     /// construye bv_fwd_, bv_rev_, wt_ y text_pos_.

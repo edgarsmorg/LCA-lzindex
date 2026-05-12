@@ -150,15 +150,20 @@ std::pair<size_t, size_t> LZ77Index::locate_extremal(const std::string& pattern)
                               sp_l, ep_l);
         if (sp_l > ep_l) continue;
 
-        // ── Consulta extremal en la grilla ────────────────────────────────────
-        const auto ext = grid_.query_extremal(sp_r, ep_r, sp_l, ep_l);
-        if (ext.count == 0) continue;
+        // ── query_min_2d + query_max_2d: O(log² z) sin enumerar puntos ────────
+        const auto rmin = grid_.query_min_2d(sp_r, ep_r, sp_l, ep_l);
+        if (rmin.count == 0) continue;
 
-        const size_t p_min = ext.boundary_min - i;
-        const size_t p_max = ext.boundary_max - i;
+        const auto rmax = grid_.query_max_2d(sp_r, ep_r, sp_l, ep_l);
 
-        if (p_min < pos_min) pos_min = p_min;
-        if (p_max > pos_max) pos_max = p_max;
+        if (rmin.boundary_min >= i) {
+            const size_t p_min = rmin.boundary_min - i;
+            if (p_min < pos_min) pos_min = p_min;
+        }
+        if (rmax.count > 0 && rmax.boundary_max >= i) {
+            const size_t p_max = rmax.boundary_max - i;
+            if (p_max > pos_max) pos_max = p_max;
+        }
         found = true;
     }
 
@@ -210,12 +215,69 @@ size_t LZ77Index::locate_min(const std::string& pattern) const {
         const auto r = grid_.query_min_2d(sp_r, ep_r, sp_l, ep_l);
         if (r.count == 0) continue;
 
-        assert(r.boundary_min >= i && "boundary_min < split: ocurrencia fuera de texto");
+        if (r.boundary_min < i) continue;  // invariante: occ_pos = boundary - split >= 0
         const size_t p = r.boundary_min - i;
         if (p < pos_min) pos_min = p;
     }
 
     return pos_min;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// locate_max()
+// ─────────────────────────────────────────────────────────────────────────────
+
+size_t LZ77Index::locate_max(const std::string& pattern) const {
+    const size_t m = pattern.size();
+    if (m < 2 || grid_.point_count() == 0) return SIZE_MAX;
+
+    const size_t n = csa_fwd_.size();
+    size_t pos_max = 0;
+    bool found = false;
+
+    const std::string rev_p(pattern.rbegin(), pattern.rend());
+
+    // ── Special: P termina en el trailing_char de alguna frase k ─────────────
+    {
+        size_t sp_rev = 0, ep_rev = n - 1;
+        sdsl::backward_search(csa_rev_, 0, n - 1,
+                              rev_p.begin(), rev_p.end(),
+                              sp_rev, ep_rev);
+        if (sp_rev <= ep_rev) {
+            const auto sp = grid_.query_special(sp_rev, ep_rev, m);
+            if (sp.count > 0 && sp.occ_max_pos > pos_max) {
+                pos_max = sp.occ_max_pos;
+                found = true;
+            }
+        }
+    }
+
+    // ── Crossings: P[0..i-1] | P[i..m-1] con i = 1..m-1 ────────────────────
+    for (size_t i = 1; i < m; ++i) {
+        size_t sp_r = 0, ep_r = n - 1;
+        sdsl::backward_search(csa_fwd_, 0, n - 1,
+                              pattern.begin() + i, pattern.end(),
+                              sp_r, ep_r);
+        if (sp_r > ep_r) continue;
+
+        const std::string left_rev(pattern.rbegin() + (m - i), pattern.rend());
+        size_t sp_l = 0, ep_l = n - 1;
+        sdsl::backward_search(csa_rev_, 0, n - 1,
+                              left_rev.begin(), left_rev.end(),
+                              sp_l, ep_l);
+        if (sp_l > ep_l) continue;
+
+        const auto r = grid_.query_max_2d(sp_r, ep_r, sp_l, ep_l);
+        if (r.count == 0 || r.boundary_max < i) continue;
+
+        const size_t p = r.boundary_max - i;
+        if (!found || p > pos_max) {
+            pos_max = p;
+            found = true;
+        }
+    }
+
+    return found ? pos_max : SIZE_MAX;
 }
 
 }  // namespace lz77tax
