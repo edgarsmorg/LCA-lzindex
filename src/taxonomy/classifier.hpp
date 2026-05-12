@@ -1,6 +1,9 @@
 #pragma once
 
 #include "lca.hpp"
+#include "../index.hpp"
+#include "../mem/extractor.hpp"
+#include <climits>
 #include <vector>
 #include <string>
 #include <limits>
@@ -65,6 +68,44 @@ public:
         int node_max = genome_of(pos_max);
         if (node_min < 0 || node_max < 0) return -1;
         return tree_->lca(node_min, node_max);
+    }
+
+    /**
+     * Pipeline completa: extrae MEMs de la query y clasifica taxonómicamente.
+     *
+     * 1. Extrae MEMs con MEMExtractor sobre el FM-index del índice LZ77.
+     * 2. Por cada MEM: locate_extremal(patrón) → {pos_min, pos_max}.
+     * 3. classify_extremal(pos_min, pos_max) → nodo LCA del MEM.
+     * 4. LCA global de todos los MEMs → resultado final.
+     *
+     * Retorna -1 si no se encontraron MEMs con ocurrencias primarias.
+     *
+     * Limitación conocida (primary-only): MEMs que caen completamente dentro
+     * de una frase LZ77 (sin cruzar ningún boundary) no tienen ocurrencias
+     * primarias y son ignorados — la clasificación puede ser menos específica
+     * que con ocurrencias secundarias.
+     *
+     * @param query   Secuencia query (lectura de ADN)
+     * @param index   Índice LZ77 construido sobre los genomas de referencia
+     * @param min_len Largo mínimo de MEM a considerar (default: 31)
+     */
+    int classify_read(const std::string& query,
+                      const LZ77Index& index,
+                      size_t min_len = 31) const {
+        MEMExtractor extractor(index.csa_fwd());
+        const auto mems = extractor.extract(query, min_len);
+
+        int result = -1;
+        for (const auto& mem : mems) {
+            const std::string pattern = query.substr(mem.query_start, mem.length);
+            const auto [pos_min, pos_max] = index.locate_extremal(pattern);
+            if (pos_min == SIZE_MAX) continue;  // sin ocurrencias primarias
+
+            const int node = classify_extremal(pos_min, pos_max);
+            if (node < 0) continue;
+            result = (result < 0) ? node : tree_->lca(result, node);
+        }
+        return result;
     }
 
     // O(g) donde g = número de genomas. Aceptable para prototipo.

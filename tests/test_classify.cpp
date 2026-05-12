@@ -277,3 +277,51 @@ TEST_F(ClassifyTest, LCA_KnownLimitation_SharedA2B1) {
         << "LIMITACIÓN: LCA=" << our_lca << " debería estar en subárbol de root(0)";
     EXPECT_NE(our_lca, 0) << "INESPERADO: si pasa, el índice ahora encuentra B1 como primaria";
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// classify_read() — pipeline completa MEMExtractor → locate_extremal → LCA
+// ─────────────────────────────────────────────────────────────────────────────
+
+TEST_F(ClassifyTest, ClassifyRead_UniqueA1) {
+    // Patrón único de A1 → classify_read debe retornar nodo en subárbol de A1(3)
+    const int result = classifier_.classify_read("AAAAACGT", idx_, 8);
+    ASSERT_NE(result, -1);
+    EXPECT_EQ(tree_.lca(result, 3), 3)
+        << "classify_read retornó " << result << ", no en subárbol de A1(3)";
+}
+
+TEST_F(ClassifyTest, ClassifyRead_UniqueB2) {
+    const int result = classifier_.classify_read("CCCCCCCC", idx_, 8);
+    ASSERT_NE(result, -1);
+    EXPECT_EQ(tree_.lca(result, 6), 6)
+        << "classify_read retornó " << result << ", no en subárbol de B2(6)";
+}
+
+TEST_F(ClassifyTest, ClassifyRead_SharedB1B2) {
+    // "TGCATGCA" aparece en B1 y B2 → LCA debe estar en subárbol de B(2)
+    const int result = classifier_.classify_read("TGCATGCA", idx_, 8);
+    ASSERT_NE(result, -1);
+    EXPECT_EQ(tree_.lca(result, 2), 2)
+        << "classify_read retornó " << result << ", no en subárbol de B(2)";
+}
+
+TEST_F(ClassifyTest, ClassifyRead_NoMatch) {
+    EXPECT_EQ(classifier_.classify_read("NNNNNNNN", idx_, 8), -1);
+}
+
+TEST_F(ClassifyTest, ClassifyRead_InSubtreeOfGroundTruth) {
+    // Propiedad: classify_read(P) ∈ subárbol(bf_classify(P))
+    const std::vector<std::pair<std::string, std::string>> cases = {
+        {"TGCATGCA",           "TGCATGCA"},   // B1+B2 → bf=B(2)
+        {"CCCCCCCC",           "CCCCCCCC"},   // B2    → bf=B2(6)
+        {"AAAAACGT",           "AAAAACGT"},   // A1    → bf=A1(3)
+    };
+    for (const auto& [read, pattern] : cases) {
+        SCOPED_TRACE("read=" + read);
+        const int our = classifier_.classify_read(read, idx_, 8);
+        const int bf  = bf_classify(pattern);
+        if (our == -1 || bf == -1) continue;
+        EXPECT_EQ(tree_.lca(our, bf), bf)
+            << "our=" << our << " no está en subárbol de bf=" << bf;
+    }
+}
