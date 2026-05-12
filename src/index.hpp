@@ -31,7 +31,8 @@ public:
      *
      * @param text  Texto sin centinela (e.g. ADN puro, sin '\0')
      */
-    void build(const std::string& text);
+    void build(const std::string& text,
+               RmqVariant variant = RmqVariant::Wm);
 
     // ── Interfaz producción (GB+) ─────────────────────────────────────────────
     /**
@@ -41,10 +42,12 @@ public:
      * @param phrases   Parsing LZ77 del texto (z frases, con centinela incluido)
      * @param csa_fwd   FM-index de T (construido sobre text + '\0')
      * @param csa_rev   FM-index de T^R (construido sobre reverse(text) + '\0')
+     * @param variant   Qué estructura RMQ construir (por defecto Wm)
      */
     void build(const LZ77Parsing& phrases,
                const sdsl::csa_wt<>& csa_fwd,
-               const sdsl::csa_wt<>& csa_rev);
+               const sdsl::csa_wt<>& csa_rev,
+               RmqVariant variant = RmqVariant::Wm);
 
     // ── Query ─────────────────────────────────────────────────────────────────
     /**

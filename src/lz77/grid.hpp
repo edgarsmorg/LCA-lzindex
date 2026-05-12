@@ -2,6 +2,7 @@
 
 #include "phrase.hpp"
 #include "../wavelet/wt_rmq_min.hpp"
+#include "../wavelet/wm_rmq_min.hpp"
 
 #include <cstddef>
 #include <string>
@@ -14,6 +15,9 @@
 #include <sdsl/suffix_arrays.hpp>
 
 namespace lz77tax {
+
+/// Selecciona qué estructura RMQ se construye y usa para localización extremal.
+enum class RmqVariant { Wt, Wm };
 
 /**
  * Grilla 2D de ocurrencias primarias del LZ-index.
@@ -51,7 +55,8 @@ public:
      */
     void build(const LZ77Parsing& phrases,
                const sdsl::csa_wt<>& csa_fwd,
-               const sdsl::csa_wt<>& csa_rev);
+               const sdsl::csa_wt<>& csa_rev,
+               RmqVariant variant = RmqVariant::Wm);
 
     // ── Interfaz de test / small-scale (≤ ~500 MB) ───────────────────────────
     /**
@@ -61,8 +66,10 @@ public:
      * @param phrases     Parsing LZ77 del texto
      * @param text        Texto original (debe terminar con el carácter más pequeño,
      *                    e.g. '\0' o '$', para que el SA sea correcto)
+     * @param variant     Qué estructura RMQ construir (por defecto Wm)
      */
-    void build(const LZ77Parsing& phrases, const std::string& text);
+    void build(const LZ77Parsing& phrases, const std::string& text,
+               RmqVariant variant = RmqVariant::Wm);
 
     // ── Consultas ─────────────────────────────────────────────────────────────
     /**
@@ -154,7 +161,10 @@ public:
     const sdsl::wt_int<>&    wt()         const { return wt_; }
     const sdsl::sd_vector<>& bv_fwd()    const { return bv_fwd_; }
     const sdsl::sd_vector<>& bv_rev()    const { return bv_rev_; }
-    const WtMinRmq&          wt_min_rmq() const { return wt_min_rmq_; }
+    const WtMinRmq&          wt_min_rmq()  const { return wt_min_rmq_; }
+    const WmMinRmq&          wm_min_rmq()  const { return wm_min_rmq_; }
+    const WmMinRmq&          wm_max_rmq()  const { return wm_max_rmq_; }
+    RmqVariant               rmq_variant() const { return variant_; }
     /// Posición en el texto del boundary k+1 para el punto con índice WT wt_idx.
     size_t text_pos(size_t wt_idx) const { return text_pos_[wt_idx]; }
 
@@ -174,15 +184,19 @@ private:
     sdsl::int_vector<>              text_pos_;        ///< text_pos_[j] = start_{k+1}, compacto
     sdsl::int_vector<>              text_pos_inv_;    ///< text_pos_inv_[j] = n-1 - text_pos_[j]
     sdsl::int_vector<>              phrase_total_len_;///< phrase_total_len_[j] = start_{k+1} - start_k
-    WtMinRmq                        wt_min_rmq_;      ///< WT+RMQ<min> topológico
-    WtMinRmq                        wt_max_rmq_;      ///< WT+RMQ<min> sobre invertidos → argmax
+    WtMinRmq                        wt_min_rmq_;      ///< WT+RMQ<min> topológico (legacy, solo si variant==Wt)
+    WtMinRmq                        wt_max_rmq_;      ///< WT+RMQ<min> sobre invertidos (legacy, solo si variant==Wt)
+    WmMinRmq                        wm_min_rmq_;      ///< WM+RMQ<min> flat wavelet matrix (solo si variant==Wm)
+    WmMinRmq                        wm_max_rmq_;      ///< WM+RMQ<min> sobre invertidos → argmax (solo si variant==Wm)
+    RmqVariant                      variant_ = RmqVariant::Wm;
 
     /// Núcleo compartido: recibe las z-1 coordenadas y los boundaries start_{k+1},
-    /// construye bv_fwd_, bv_rev_, wt_ y text_pos_.
+    /// construye bv_fwd_, bv_rev_, wt_, text_pos_ y la estructura RMQ elegida.
     void build_from_coords(const std::vector<std::pair<size_t, size_t>>& coords,
                            const std::vector<size_t>& boundaries,
                            const std::vector<size_t>& phrase_lens,
-                           size_t n);
+                           size_t n,
+                           RmqVariant variant);
 };
 
 }  // namespace lz77tax

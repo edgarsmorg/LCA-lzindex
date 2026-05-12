@@ -13,7 +13,7 @@ namespace lz77tax {
 // build() — versión small-scale / tests
 // ─────────────────────────────────────────────────────────────────────────────
 
-void LZ77Index::build(const std::string& text) {
+void LZ77Index::build(const std::string& text, RmqVariant variant) {
     // 1. Centinela: la grid y el parser lo necesitan al final.
     const std::string text_s = text + '\0';
 
@@ -21,7 +21,7 @@ void LZ77Index::build(const std::string& text) {
     phrases_ = LZ77Parser().parse(text_s);
 
     // 3. Construir grid (text_s incluye '\0' → SA tamaño n = text.size()+1).
-    grid_.build(phrases_, text_s);
+    grid_.build(phrases_, text_s, variant);
 
     // 4. CSA forward sobre texto SIN centinela.
     //    sdsl::construct_im rechaza '\0' en el input y lo añade internamente,
@@ -41,11 +41,12 @@ void LZ77Index::build(const std::string& text) {
 
 void LZ77Index::build(const LZ77Parsing& phrases,
                       const sdsl::csa_wt<>& csa_fwd,
-                      const sdsl::csa_wt<>& csa_rev) {
+                      const sdsl::csa_wt<>& csa_rev,
+                      RmqVariant variant) {
     phrases_ = phrases;
     csa_fwd_ = csa_fwd;
     csa_rev_ = csa_rev;
-    grid_.build(phrases_, csa_fwd_, csa_rev_);
+    grid_.build(phrases_, csa_fwd_, csa_rev_, variant);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
