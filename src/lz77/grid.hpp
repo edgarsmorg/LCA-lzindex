@@ -46,16 +46,19 @@ class Grid2D {
 public:
     // ── Interfaz de producción (GB+) ─────────────────────────────────────────
     /**
-     * Construye la grilla usando FM-indexes ya construidos.
-     * Usa csa.isa[i] que evita materializar el ISA completo — seguro a escala GB+.
+     * Construye la grilla usando arrays ISA materializados.
+     * Llamada por LZ77Index::build() después de sri::construct + sdsl::construct_isa.
+     * Los arrays ISA se liberan por el llamador inmediatamente después.
      *
      * @param phrases   Parsing LZ77 del texto (z frases)
-     * @param csa_fwd   FM-index de T (SA de T forward)
-     * @param csa_rev   FM-index de T^R (SA del texto reverso)
+     * @param isa_fwd   ISA del texto forward (SA⁻¹ de T)
+     * @param isa_rev   ISA del texto reverso (SA⁻¹ de T^R)
+     * @param n         Tamaño del texto con centinela
      */
     void build(const LZ77Parsing& phrases,
-               const sdsl::csa_wt<>& csa_fwd,
-               const sdsl::csa_wt<>& csa_rev,
+               const sdsl::int_vector<>& isa_fwd,
+               const sdsl::int_vector<>& isa_rev,
+               size_t n,
                RmqVariant variant = RmqVariant::Wm);
 
     // ── Interfaz de test / small-scale (≤ ~500 MB) ───────────────────────────

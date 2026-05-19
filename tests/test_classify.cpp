@@ -34,9 +34,11 @@
 #include "index.hpp"
 #include "taxonomy/lca.hpp"
 #include "taxonomy/classifier.hpp"
+#include "mem/extractor.hpp"
 
 #include <sdsl/suffix_arrays.hpp>
 #include <climits>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -71,6 +73,7 @@ protected:
         });
 
         sdsl::construct_im(fm_, REFERENCE, 1);
+        ext_ = std::make_unique<MEMExtractor>(fm_);
     }
 
     // Ground truth: localiza todas las ocurrencias via FM-index y clasifica.
@@ -86,10 +89,11 @@ protected:
         return tree_.lca(descendant, ancestor) == ancestor;
     }
 
-    LZ77Index        idx_;
-    PhyloTree        tree_;
-    Classifier       classifier_;
-    sdsl::csa_wt<>   fm_;
+    LZ77Index                     idx_;
+    PhyloTree                     tree_;
+    Classifier                    classifier_;
+    sdsl::csa_wt<>                fm_;
+    std::unique_ptr<MEMExtractor> ext_;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -284,14 +288,14 @@ TEST_F(ClassifyTest, LCA_KnownLimitation_SharedA2B1) {
 
 TEST_F(ClassifyTest, ClassifyRead_UniqueA1) {
     // Patrón único de A1 → classify_read debe retornar nodo en subárbol de A1(3)
-    const int result = classifier_.classify_read("AAAAACGT", idx_, 8);
+    const int result = classifier_.classify_read("AAAAACGT", idx_, *ext_, 8);
     ASSERT_NE(result, -1);
     EXPECT_EQ(tree_.lca(result, 3), 3)
         << "classify_read retornó " << result << ", no en subárbol de A1(3)";
 }
 
 TEST_F(ClassifyTest, ClassifyRead_UniqueB2) {
-    const int result = classifier_.classify_read("CCCCCCCC", idx_, 8);
+    const int result = classifier_.classify_read("CCCCCCCC", idx_, *ext_, 8);
     ASSERT_NE(result, -1);
     EXPECT_EQ(tree_.lca(result, 6), 6)
         << "classify_read retornó " << result << ", no en subárbol de B2(6)";
@@ -299,14 +303,14 @@ TEST_F(ClassifyTest, ClassifyRead_UniqueB2) {
 
 TEST_F(ClassifyTest, ClassifyRead_SharedB1B2) {
     // "TGCATGCA" aparece en B1 y B2 → LCA debe estar en subárbol de B(2)
-    const int result = classifier_.classify_read("TGCATGCA", idx_, 8);
+    const int result = classifier_.classify_read("TGCATGCA", idx_, *ext_, 8);
     ASSERT_NE(result, -1);
     EXPECT_EQ(tree_.lca(result, 2), 2)
         << "classify_read retornó " << result << ", no en subárbol de B(2)";
 }
 
 TEST_F(ClassifyTest, ClassifyRead_NoMatch) {
-    EXPECT_EQ(classifier_.classify_read("NNNNNNNN", idx_, 8), -1);
+    EXPECT_EQ(classifier_.classify_read("NNNNNNNN", idx_, *ext_, 8), -1);
 }
 
 TEST_F(ClassifyTest, ClassifyRead_InSubtreeOfGroundTruth) {
@@ -318,7 +322,7 @@ TEST_F(ClassifyTest, ClassifyRead_InSubtreeOfGroundTruth) {
     };
     for (const auto& [read, pattern] : cases) {
         SCOPED_TRACE("read=" + read);
-        const int our = classifier_.classify_read(read, idx_, 8);
+        const int our = classifier_.classify_read(read, idx_, *ext_, 8);
         const int bf  = bf_classify(pattern);
         if (our == -1 || bf == -1) continue;
         EXPECT_EQ(tree_.lca(our, bf), bf)

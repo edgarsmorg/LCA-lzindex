@@ -228,7 +228,8 @@ class PipelineTest : public ::testing::Test {
 protected:
     void SetUp() override {
         idx_.build(REFERENCE);
-        ext_ = std::make_unique<MEMExtractor>(idx_.csa_fwd());
+        sdsl::construct_im(csa_ref_, REFERENCE, 1);
+        ext_ = std::make_unique<MEMExtractor>(csa_ref_);
 
         tree_.build(
             {0, 1, 2, 3, 4, 5, 6},
@@ -270,6 +271,7 @@ protected:
     }
 
     LZ77Index                      idx_;
+    sdsl::csa_wt<>                 csa_ref_;
     std::unique_ptr<MEMExtractor>  ext_;
     PhyloTree                      tree_;
     Classifier                     classifier_;

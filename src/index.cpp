@@ -3,76 +3,228 @@
 #include <algorithm>
 #include <cassert>
 #include <climits>
+#include <filesystem>
+#include <fstream>
+#include <random>
 #include <string>
 
-#include <sdsl/suffix_arrays.hpp>
+#include <sdsl/csa_wt.hpp>
+#include <sdsl/construct_isa.hpp>
+#include <sdsl/construct.hpp>
+#include <sdsl/int_vector.hpp>
+#include <sdsl/util.hpp>
+
+#include <sr-index/r_csa.h>
+#include <sr-index/construct.h>
+#include <sr-index/config.h>
+#include <sr-index/index_base.h>
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CountOnlyRCSA — subclase de sri::RCSA<> que solo carga/serializa las
+// estructuras necesarias para Count() (Alphabet + PsiCoreRLE).
+// Los samples/marks/mark-to-sample del Locate se omiten completamente:
+//   • No se cargan en loadAllItems() → no consumen RAM.
+//   • No se escriben en serialize()  → serialize_bytes() reporta solo
+//     los ~25 MB reales de Alphabet + PsiRLE por dirección.
+// Locate() queda deshabilitado (stubs); la clase es solo para Count().
+//
+// Nota: la clase está en file scope (no en anonymous namespace) para que
+// sdsl::has_serialize<CountOnlyRCSA>::value sea true y sdsl::size_in_bytes
+// funcione correctamente a través del despacho virtual de serialize().
+// ─────────────────────────────────────────────────────────────────────────────
+
+class CountOnlyRCSA : public sri::RCSA<> {
+    using Base    = sri::RCSA<>;
+    using StrType = typename Alphabet::string_type;
+ public:
+    // serialize es public en la base: override debe también ser public para que
+    // sdsl::has_serialize lo detecte y rcsa_bytes() lo pueda llamar externamente.
+    size_type serialize(std::ostream& out, sdsl::structure_tree_node* v,
+                        const std::string& name) const override {
+        auto child = sdsl::structure_tree::add_child(v, name, "CountOnlyRCSA");
+        size_type written = 0;
+        written += this->template serializeItem<Alphabet>(
+            key(ItemKey::ALPHABET), out, child, "alphabet");
+        written += this->template serializeItem<sri::PsiCoreRLE<>>(
+            key(ItemKey::NAVIGATE), out, child, "psi");
+        return written;
+    }
+
+ protected:
+    void loadAllItems(TSource& t_source) override {
+        this->template loadItem<Alphabet>(key(ItemKey::ALPHABET), t_source);
+        this->template loadItem<sri::PsiCoreRLE<>>(key(ItemKey::NAVIGATE), t_source, true);
+        // Skip: TSample, TBvMark+rank/select, TMarkToSampleIdx — Count no los usa.
+    }
+
+    void constructIndex(TSource& t_source) override {
+        auto lf      = this->constructLF(t_source);   // también setea this->n_
+        auto sym     = this->constructGetSymbol(t_source);
+        auto is_mt   = this->constructIsRangeEmpty();
+        auto no_init = [](std::size_t) noexcept -> int { return 0; };
+        auto no_upd  = [](auto&&...) noexcept {};
+        auto no_cmp  = [](auto&&...) noexcept {};
+        auto mk_rng  = [](std::size_t n) noexcept -> Range { return {0, n}; };
+
+        using LF_t  = decltype(lf);
+        using Sym_t = decltype(sym);
+        using I_t   = decltype(no_init);
+        using U_t   = decltype(no_upd);
+        using C_t   = decltype(no_cmp);
+        using R_t   = decltype(mk_rng);
+        using E_t   = decltype(is_mt);
+
+        this->index_ = std::make_shared<
+            sri::RIndexBase<StrType, LF_t, U_t, C_t, I_t, Sym_t, R_t, E_t>
+        >(StrType{}, lf, no_upd, no_cmp, this->n_, no_init, sym, mk_rng, is_mt);
+    }
+};
 
 namespace lz77tax {
 
+// PIMPL: mantiene los dos RCSA lejos del header (evita ODR por funciones no-inline del sr-index)
+struct LZ77Index::RCSAImpl {
+    CountOnlyRCSA fwd;
+    CountOnlyRCSA rev;
+};
+
+LZ77Index::LZ77Index() = default;
+LZ77Index::~LZ77Index() = default;
+
 // ─────────────────────────────────────────────────────────────────────────────
-// build() — versión small-scale / tests
+// Helpers internos
+// ─────────────────────────────────────────────────────────────────────────────
+
+namespace {
+
+// Escribe `text` a un archivo temporal en `tmp_dir` y devuelve su path.
+std::filesystem::path write_temp_text(const std::string& text,
+                                      const std::filesystem::path& tmp_dir,
+                                      const std::string& suffix) {
+    auto path = tmp_dir / ("lz77_" + suffix + ".txt");
+    std::ofstream f(path, std::ios::binary);
+    f.write(text.data(), text.size());
+    return path;
+}
+
+// Construye un CountOnlyRCSA para `text_path`, extrae ISA desde el cache de sdsl y lo devuelve.
+// config tiene delete_files=true → los archivos intermedios se borran al destruir config.
+sdsl::int_vector<> build_rcsa_and_get_isa(CountOnlyRCSA& rcsa,
+                                           const std::filesystem::path& text_path,
+                                           const std::filesystem::path& cache_dir) {
+    sri::Config config(text_path, cache_dir, sri::SAAlgo::SDSL_LIBDIVSUFSORT,
+                       /*delete_files=*/true);
+    sri::construct(rcsa, text_path.string(), config);
+
+    // ISA no se construye en sri::construct — hacerlo aquí.
+    sdsl::construct_isa(config);
+    sdsl::int_vector<> isa;
+    sdsl::load_from_cache(isa, sdsl::conf::KEY_ISA, config);
+    return isa;
+}
+
+std::filesystem::path make_tmp_dir(const std::string& prefix) {
+    std::mt19937_64 rng(std::random_device{}());
+    auto tmp = std::filesystem::temp_directory_path()
+               / (prefix + "_" + std::to_string(rng()));
+    std::filesystem::create_directories(tmp);
+    return tmp;
+}
+
+}  // namespace
+
+// ─────────────────────────────────────────────────────────────────────────────
+// build() — versión desde texto en memoria (small-scale y benchmark)
 // ─────────────────────────────────────────────────────────────────────────────
 
 void LZ77Index::build(const std::string& text, RmqVariant variant) {
-    // 1. Centinela: la grid y el parser lo necesitan al final.
     const std::string text_s = text + '\0';
-
-    // 2. Parsear sobre texto con centinela.
+    n_ = text_s.size();
     phrases_ = LZ77Parser().parse(text_s);
 
-    // 3. Construir grid (text_s incluye '\0' → SA tamaño n = text.size()+1).
-    grid_.build(phrases_, text_s, variant);
+    alphabet_.fill(false);
+    for (unsigned char c : text) alphabet_[c] = true;
 
-    // 4. CSA forward sobre texto SIN centinela.
-    //    sdsl::construct_im rechaza '\0' en el input y lo añade internamente,
-    //    por lo que el SA resultante es idéntico al usado por la grid.
-    sdsl::construct_im(csa_fwd_, text, 1);  // 1 = byte alphabet
+    rcsa_ = std::make_unique<RCSAImpl>();
 
-    // 5. CSA reverso sobre reverse(text) SIN centinela.
-    //    Consistente con grid.build(): ambos invierten text completo (sin centinela).
-    //    sdsl::construct_im añade '\0' internamente → SA de reverse(text)+'\0'.
+    // Directorios temporales separados para fwd y rev (evitar colisiones de keys).
+    const auto tmp_fwd = make_tmp_dir("lz77fwd");
+    const auto tmp_rev = make_tmp_dir("lz77rev");
+
+    // Texto SIN centinela para sri::construct (lo añade internamente via sdsl).
+    const auto path_fwd = write_temp_text(text, tmp_fwd, "text");
+    const auto isa_fwd  = build_rcsa_and_get_isa(rcsa_->fwd, path_fwd, tmp_fwd);
+    std::filesystem::remove(path_fwd);
+    std::filesystem::remove_all(tmp_fwd);
+
     const std::string text_rev(text.rbegin(), text.rend());
-    sdsl::construct_im(csa_rev_, text_rev, 1);
+    const auto path_rev = write_temp_text(text_rev, tmp_rev, "text");
+    const auto isa_rev  = build_rcsa_and_get_isa(rcsa_->rev, path_rev, tmp_rev);
+    std::filesystem::remove(path_rev);
+    std::filesystem::remove_all(tmp_rev);
+
+    grid_.build(phrases_, isa_fwd, isa_rev, n_, variant);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// build() — versión producción (GB+)
-// ─────────────────────────────────────────────────────────────────────────────
-
-void LZ77Index::build(const LZ77Parsing& phrases,
-                      const sdsl::csa_wt<>& csa_fwd,
-                      const sdsl::csa_wt<>& csa_rev,
-                      RmqVariant variant) {
-    phrases_ = phrases;
-    csa_fwd_ = csa_fwd;
-    csa_rev_ = csa_rev;
-    grid_.build(phrases_, csa_fwd_, csa_rev_, variant);
+namespace {
+// Cuenta bytes que serialize() escribe llamando directamente al método virtual.
+// Evita sdsl::size_in_bytes que requiere has_serialize<T> vía free function.
+size_t rcsa_bytes(const CountOnlyRCSA& rcsa) {
+    struct NullBuf : std::streambuf {
+        std::streamsize xsputn(const char*, std::streamsize n) override { return n; }
+        int overflow(int c) override { return c; }
+    } buf;
+    std::ostream ns(&buf);
+    return rcsa.serialize(ns, nullptr, "");
 }
+}  // namespace
+
+size_t LZ77Index::csa_fwd_bytes() const {
+    return rcsa_ ? rcsa_bytes(rcsa_->fwd) : 0;
+}
+
+size_t LZ77Index::csa_rev_bytes() const {
+    return rcsa_ ? rcsa_bytes(rcsa_->rev) : 0;
+}
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // count()
 // ─────────────────────────────────────────────────────────────────────────────
 
+namespace {
+// Convierte rango half-open [start, stop) de CountOnlyRCSA::Count a closed [sp, ep].
+// Precondición: sub solo contiene caracteres en el alfabeto del índice.
+bool rcsa_search(const CountOnlyRCSA& rcsa, const std::string& sub,
+                 size_t& sp, size_t& ep) {
+    auto [start, stop] = rcsa.Count(sub);
+    if (start >= stop) return false;
+    sp = start;
+    ep = stop - 1;
+    return true;
+}
+
+// Retorna true si todos los chars de s están en el alfabeto indexado.
+bool in_alphabet(const std::string& s, const std::array<bool, 256>& alpha) {
+    for (unsigned char c : s)
+        if (!alpha[c]) return false;
+    return true;
+}
+}  // namespace
+
 size_t LZ77Index::count(const std::string& pattern) const {
     const size_t m = pattern.size();
 
-    // Un patrón de longitud 0 o 1 no puede ser primario (crossing ni end-aligned).
-    if (m < 2 || grid_.point_count() == 0) return 0;
+    if (m < 2 || grid_.point_count() == 0 || !rcsa_) return 0;
+    if (!in_alphabet(pattern, alphabet_)) return 0;
 
-    const size_t n = csa_fwd_.size();
     size_t total = 0;
-
-    // Precomputar reverse(P) una vez — usado en el caso especial y reutilizable.
     const std::string rev_p(pattern.rbegin(), pattern.rend());
 
     // ── Special: P termina en el trailing_char de alguna frase k ─────────────
-    // Equivalente al split degenerado i=m: P[0..m-1] | vacío.
     {
-        size_t sp_rev = 0, ep_rev = n - 1;
-        sdsl::backward_search(csa_rev_, 0, n - 1,
-                              rev_p.begin(), rev_p.end(),
-                              sp_rev, ep_rev);
-        if (sp_rev <= ep_rev) {
+        size_t sp_rev, ep_rev;
+        if (rcsa_search(rcsa_->rev, rev_p, sp_rev, ep_rev)) {
             const auto sp = grid_.query_special(sp_rev, ep_rev, m);
             total += sp.count;
         }
@@ -80,23 +232,13 @@ size_t LZ77Index::count(const std::string& pattern) const {
 
     // ── Crossings: P[0..i-1] | P[i..m-1] con i = 1..m-1 ────────────────────
     for (size_t i = 1; i < m; ++i) {
-        // ── Lado derecho: P[i..m-1] en SA forward ────────────────────────────
-        size_t sp_r = 0, ep_r = n - 1;
-        sdsl::backward_search(csa_fwd_, 0, n - 1,
-                              pattern.begin() + i, pattern.end(),
-                              sp_r, ep_r);
-        if (sp_r > ep_r) continue;  // P[i..m-1] no aparece en T
+        size_t sp_r, ep_r;
+        if (!rcsa_search(rcsa_->fwd, pattern.substr(i), sp_r, ep_r)) continue;
 
-        // ── Lado izquierdo: reverse(P[0..i-1]) en SA reverso ─────────────────
-        // left_rev = reverse(P[0..i-1]) = P[i-1], P[i-2], ..., P[0]
         const std::string left_rev(pattern.rbegin() + (m - i), pattern.rend());
-        size_t sp_l = 0, ep_l = n - 1;
-        sdsl::backward_search(csa_rev_, 0, n - 1,
-                              left_rev.begin(), left_rev.end(),
-                              sp_l, ep_l);
-        if (sp_l > ep_l) continue;  // P[0..i-1] no aparece en T
+        size_t sp_l, ep_l;
+        if (!rcsa_search(rcsa_->rev, left_rev, sp_l, ep_l)) continue;
 
-        // ── Consulta 2D en la grilla ──────────────────────────────────────────
         const auto [cnt, pts] = grid_.query(sp_r, ep_r, sp_l, ep_l);
         total += cnt;
     }
@@ -111,20 +253,17 @@ size_t LZ77Index::count(const std::string& pattern) const {
 std::pair<size_t, size_t> LZ77Index::locate_extremal(const std::string& pattern) const {
     const size_t m = pattern.size();
     if (m < 2 || grid_.point_count() == 0) return {SIZE_MAX, 0};
+    if (!in_alphabet(pattern, alphabet_)) return {SIZE_MAX, 0};
 
-    const size_t n = csa_fwd_.size();
     size_t pos_min = SIZE_MAX, pos_max = 0;
     bool found = false;
 
     const std::string rev_p(pattern.rbegin(), pattern.rend());
 
-    // ── Special: P termina en el trailing_char de alguna frase k ─────────────
+    // ── Special ───────────────────────────────────────────────────────────────
     {
-        size_t sp_rev = 0, ep_rev = n - 1;
-        sdsl::backward_search(csa_rev_, 0, n - 1,
-                              rev_p.begin(), rev_p.end(),
-                              sp_rev, ep_rev);
-        if (sp_rev <= ep_rev) {
+        size_t sp_rev, ep_rev;
+        if (rcsa_search(rcsa_->rev, rev_p, sp_rev, ep_rev)) {
             const auto sp = grid_.query_special(sp_rev, ep_rev, m);
             if (sp.count > 0) {
                 if (sp.occ_min_pos < pos_min) pos_min = sp.occ_min_pos;
@@ -134,24 +273,15 @@ std::pair<size_t, size_t> LZ77Index::locate_extremal(const std::string& pattern)
         }
     }
 
-    // ── Crossings: P[0..i-1] | P[i..m-1] con i = 1..m-1 ────────────────────
+    // ── Crossings ─────────────────────────────────────────────────────────────
     for (size_t i = 1; i < m; ++i) {
-        // ── Lado derecho: P[i..m-1] en SA forward ────────────────────────────
-        size_t sp_r = 0, ep_r = n - 1;
-        sdsl::backward_search(csa_fwd_, 0, n - 1,
-                              pattern.begin() + i, pattern.end(),
-                              sp_r, ep_r);
-        if (sp_r > ep_r) continue;
+        size_t sp_r, ep_r;
+        if (!rcsa_search(rcsa_->fwd, pattern.substr(i), sp_r, ep_r)) continue;
 
-        // ── Lado izquierdo: reverse(P[0..i-1]) en SA reverso ─────────────────
         const std::string left_rev(pattern.rbegin() + (m - i), pattern.rend());
-        size_t sp_l = 0, ep_l = n - 1;
-        sdsl::backward_search(csa_rev_, 0, n - 1,
-                              left_rev.begin(), left_rev.end(),
-                              sp_l, ep_l);
-        if (sp_l > ep_l) continue;
+        size_t sp_l, ep_l;
+        if (!rcsa_search(rcsa_->rev, left_rev, sp_l, ep_l)) continue;
 
-        // ── query_min_2d + query_max_2d: O(log² z) sin enumerar puntos ────────
         const auto rmin = grid_.query_min_2d(sp_r, ep_r, sp_l, ep_l);
         if (rmin.count == 0) continue;
 
@@ -179,44 +309,34 @@ std::pair<size_t, size_t> LZ77Index::locate_extremal(const std::string& pattern)
 size_t LZ77Index::locate_min(const std::string& pattern) const {
     const size_t m = pattern.size();
     if (m < 2 || grid_.point_count() == 0) return SIZE_MAX;
+    if (!in_alphabet(pattern, alphabet_)) return SIZE_MAX;
 
-    const size_t n = csa_fwd_.size();
     size_t pos_min = SIZE_MAX;
-
     const std::string rev_p(pattern.rbegin(), pattern.rend());
 
-    // ── Special: P termina en el trailing_char de alguna frase k ─────────────
+    // ── Special ───────────────────────────────────────────────────────────────
     {
-        size_t sp_rev = 0, ep_rev = n - 1;
-        sdsl::backward_search(csa_rev_, 0, n - 1,
-                              rev_p.begin(), rev_p.end(),
-                              sp_rev, ep_rev);
-        if (sp_rev <= ep_rev) {
+        size_t sp_rev, ep_rev;
+        if (rcsa_search(rcsa_->rev, rev_p, sp_rev, ep_rev)) {
             const auto sp = grid_.query_special(sp_rev, ep_rev, m);
             if (sp.count > 0 && sp.occ_min_pos < pos_min)
                 pos_min = sp.occ_min_pos;
         }
     }
 
-    // ── Crossings: P[0..i-1] | P[i..m-1] con i = 1..m-1 ────────────────────
+    // ── Crossings ─────────────────────────────────────────────────────────────
     for (size_t i = 1; i < m; ++i) {
-        size_t sp_r = 0, ep_r = n - 1;
-        sdsl::backward_search(csa_fwd_, 0, n - 1,
-                              pattern.begin() + i, pattern.end(),
-                              sp_r, ep_r);
-        if (sp_r > ep_r) continue;
+        size_t sp_r, ep_r;
+        if (!rcsa_search(rcsa_->fwd, pattern.substr(i), sp_r, ep_r)) continue;
 
         const std::string left_rev(pattern.rbegin() + (m - i), pattern.rend());
-        size_t sp_l = 0, ep_l = n - 1;
-        sdsl::backward_search(csa_rev_, 0, n - 1,
-                              left_rev.begin(), left_rev.end(),
-                              sp_l, ep_l);
-        if (sp_l > ep_l) continue;
+        size_t sp_l, ep_l;
+        if (!rcsa_search(rcsa_->rev, left_rev, sp_l, ep_l)) continue;
 
         const auto r = grid_.query_min_2d(sp_r, ep_r, sp_l, ep_l);
         if (r.count == 0) continue;
 
-        if (r.boundary_min < i) continue;  // invariante: occ_pos = boundary - split >= 0
+        if (r.boundary_min < i) continue;
         const size_t p = r.boundary_min - i;
         if (p < pos_min) pos_min = p;
     }
@@ -231,20 +351,16 @@ size_t LZ77Index::locate_min(const std::string& pattern) const {
 size_t LZ77Index::locate_max(const std::string& pattern) const {
     const size_t m = pattern.size();
     if (m < 2 || grid_.point_count() == 0) return SIZE_MAX;
+    if (!in_alphabet(pattern, alphabet_)) return SIZE_MAX;
 
-    const size_t n = csa_fwd_.size();
     size_t pos_max = 0;
     bool found = false;
-
     const std::string rev_p(pattern.rbegin(), pattern.rend());
 
-    // ── Special: P termina en el trailing_char de alguna frase k ─────────────
+    // ── Special ───────────────────────────────────────────────────────────────
     {
-        size_t sp_rev = 0, ep_rev = n - 1;
-        sdsl::backward_search(csa_rev_, 0, n - 1,
-                              rev_p.begin(), rev_p.end(),
-                              sp_rev, ep_rev);
-        if (sp_rev <= ep_rev) {
+        size_t sp_rev, ep_rev;
+        if (rcsa_search(rcsa_->rev, rev_p, sp_rev, ep_rev)) {
             const auto sp = grid_.query_special(sp_rev, ep_rev, m);
             if (sp.count > 0 && sp.occ_max_pos > pos_max) {
                 pos_max = sp.occ_max_pos;
@@ -253,20 +369,14 @@ size_t LZ77Index::locate_max(const std::string& pattern) const {
         }
     }
 
-    // ── Crossings: P[0..i-1] | P[i..m-1] con i = 1..m-1 ────────────────────
+    // ── Crossings ─────────────────────────────────────────────────────────────
     for (size_t i = 1; i < m; ++i) {
-        size_t sp_r = 0, ep_r = n - 1;
-        sdsl::backward_search(csa_fwd_, 0, n - 1,
-                              pattern.begin() + i, pattern.end(),
-                              sp_r, ep_r);
-        if (sp_r > ep_r) continue;
+        size_t sp_r, ep_r;
+        if (!rcsa_search(rcsa_->fwd, pattern.substr(i), sp_r, ep_r)) continue;
 
         const std::string left_rev(pattern.rbegin() + (m - i), pattern.rend());
-        size_t sp_l = 0, ep_l = n - 1;
-        sdsl::backward_search(csa_rev_, 0, n - 1,
-                              left_rev.begin(), left_rev.end(),
-                              sp_l, ep_l);
-        if (sp_l > ep_l) continue;
+        size_t sp_l, ep_l;
+        if (!rcsa_search(rcsa_->rev, left_rev, sp_l, ep_l)) continue;
 
         const auto r = grid_.query_max_2d(sp_r, ep_r, sp_l, ep_l);
         if (r.count == 0 || r.boundary_max < i) continue;

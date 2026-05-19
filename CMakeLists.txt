@@ -15,7 +15,12 @@ endif()
 
 # Headers del proyecto + sdsl (header-only, duscob fork)
 set(SDSL_INCLUDE $ENV{HOME}/.local/include)
-include_directories(${CMAKE_SOURCE_DIR}/src ${SDSL_INCLUDE})
+
+# sr-index headers (header-only) + nlohmann json ya descargado por su build/
+set(SR_INDEX_INCLUDE ${CMAKE_SOURCE_DIR}/external/sr-index/include)
+set(SR_INDEX_JSON    ${CMAKE_SOURCE_DIR}/external/sr-index/build/_deps/json-src/single_include)
+
+include_directories(${CMAKE_SOURCE_DIR}/src ${SDSL_INCLUDE} ${SR_INDEX_INCLUDE} ${SR_INDEX_JSON})
 
 # Archivos fuente del proyecto
 set(PROJECT_SOURCES

@@ -179,10 +179,10 @@ void Grid2D::build(const LZ77Parsing& phrases, const std::string& text,
 // ─────────────────────────────────────────────────────────────────────────────
 
 void Grid2D::build(const LZ77Parsing& phrases,
-                   const sdsl::csa_wt<>& csa_fwd,
-                   const sdsl::csa_wt<>& csa_rev,
+                   const sdsl::int_vector<>& isa_fwd,
+                   const sdsl::int_vector<>& isa_rev,
+                   size_t n,
                    RmqVariant variant) {
-    const size_t n = csa_fwd.size();
     const size_t z = phrases.size();
 
     if (z <= 1) return;
@@ -194,10 +194,7 @@ void Grid2D::build(const LZ77Parsing& phrases,
         const size_t end_k    = phrases[k].start_pos + phrases[k].length;
         const size_t start_k1 = phrases[k + 1].start_pos;
 
-        // csa_fwd.isa[i] resuelve ISA[i] en O(t_psi) sin materializar el array.
-        // Y_k = csa_rev.isa[n-2-end_k]: csa_rev debe estar construido sobre
-        // reverse(text_raw) + '\0' (no reverse(text_with_sentinel)).
-        coords[k]      = { csa_fwd.isa[start_k1], csa_rev.isa[n - 2 - end_k] };
+        coords[k]      = { isa_fwd[start_k1], isa_rev[n - 2 - end_k] };
         boundaries[k]  = start_k1;
         phrase_lens[k] = phrases[k].length + 1;
     }

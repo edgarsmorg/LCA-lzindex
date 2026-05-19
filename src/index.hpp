@@ -3,12 +3,10 @@
 #include "lz77/parser.hpp"
 #include "lz77/grid.hpp"
 
+#include <array>
 #include <cstddef>
+#include <memory>
 #include <string>
-
-#include <sdsl/suffix_arrays.hpp>
-#include <sdsl/csa_wt.hpp>
-#include <sdsl/util.hpp>
 
 namespace lz77tax {
 
@@ -24,6 +22,9 @@ namespace lz77tax {
  */
 class LZ77Index {
 public:
+    LZ77Index();
+    ~LZ77Index();
+
     // ── Interfaz small-scale / tests (≤ ~500 MB) ─────────────────────────────
     /**
      * Construye el índice completo desde el texto crudo.
@@ -34,20 +35,6 @@ public:
     void build(const std::string& text,
                RmqVariant variant = RmqVariant::Wm);
 
-    // ── Interfaz producción (GB+) ─────────────────────────────────────────────
-    /**
-     * Recibe frases ya computadas y FM-indexes ya construidos (ropebwt3).
-     * Evita materializar SA completo en RAM — seguro a escala GB+.
-     *
-     * @param phrases   Parsing LZ77 del texto (z frases, con centinela incluido)
-     * @param csa_fwd   FM-index de T (construido sobre text + '\0')
-     * @param csa_rev   FM-index de T^R (construido sobre reverse(text) + '\0')
-     * @param variant   Qué estructura RMQ construir (por defecto Wm)
-     */
-    void build(const LZ77Parsing& phrases,
-               const sdsl::csa_wt<>& csa_fwd,
-               const sdsl::csa_wt<>& csa_rev,
-               RmqVariant variant = RmqVariant::Wm);
 
     // ── Query ─────────────────────────────────────────────────────────────────
     /**
@@ -96,7 +83,7 @@ public:
 
     // ── Accesores ─────────────────────────────────────────────────────────────
     /// Tamaño del texto indexado (incluyendo centinela '\0')
-    size_t text_size()    const { return csa_fwd_.size(); }
+    size_t text_size()    const { return n_; }
 
     /// Número de frases LZ77
     size_t phrase_count() const { return phrases_.size(); }
@@ -106,15 +93,17 @@ public:
 
     const LZ77Parsing& phrases() const { return phrases_; }
     const Grid2D&      grid()    const { return grid_; }
-    size_t csa_fwd_bytes()       const { return sdsl::size_in_bytes(csa_fwd_); }
-    size_t csa_rev_bytes()       const { return sdsl::size_in_bytes(csa_rev_); }
-    const sdsl::csa_wt<>& csa_fwd() const { return csa_fwd_; }
+    size_t csa_fwd_bytes()       const;
+    size_t csa_rev_bytes()       const;
 
 private:
-    LZ77Parsing    phrases_;
-    Grid2D         grid_;
-    sdsl::csa_wt<> csa_fwd_;   // FM-index de T      (backward_search lado derecho)
-    sdsl::csa_wt<> csa_rev_;   // FM-index de T^R    (backward_search lado izquierdo)
+    struct RCSAImpl;              // PIMPL: definido en index.cpp (r_csa.h solo allí)
+
+    LZ77Parsing                phrases_;
+    Grid2D                     grid_;
+    size_t                     n_ = 0;
+    std::array<bool, 256>      alphabet_{};  ///< chars presentes en el texto indexado
+    std::unique_ptr<RCSAImpl>  rcsa_;
 };
 
 }  // namespace lz77tax

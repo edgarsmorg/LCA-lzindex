@@ -91,8 +91,8 @@ public:
      */
     int classify_read(const std::string& query,
                       const LZ77Index& index,
+                      const MEMExtractor& extractor,
                       size_t min_len = 31) const {
-        MEMExtractor extractor(index.csa_fwd());
         const auto mems = extractor.extract(query, min_len);
 
         int result = -1;
