@@ -165,6 +165,63 @@ target_include_directories(measure_index PRIVATE ${CMAKE_SOURCE_DIR}/src ${SDSL_
 target_compile_options(measure_index PRIVATE -O3)
 message(STATUS "measure_index: habilitado")
 
+# ── sr_index_locator: objeto PIMPL que aísla los headers del sr-index ─────────
+# Se compila UNA sola vez y se reutiliza en baseline_lca_sr y test_baseline_sr,
+# evitando múltiples definiciones de símbolos de sr-index al linkar con index.cpp.
+if(EXISTS ${SR_INDEX_DIR}/include AND EXISTS ${SDSL_INCLUDE}/sdsl)
+    add_library(sr_index_locator_obj OBJECT
+        src/baseline/sr_index_locator.cpp
+    )
+    target_include_directories(sr_index_locator_obj PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${SR_INDEX_DIR}/include
+        ${SDSL_INCLUDE}
+        ${SR_BUILD_DIR}/_deps/json-src/single_include
+    )
+    target_compile_options(sr_index_locator_obj PRIVATE -O3)
+endif()
+
+# ── baseline_lca_sr: benchmark del pipeline LCA usando sr-index ───────────────
+if(EXISTS ${SR_INDEX_DIR}/include AND EXISTS ${SDSL_INCLUDE}/sdsl)
+    add_executable(baseline_lca_sr
+        tools/baseline_lca_sr.cpp
+        $<TARGET_OBJECTS:sr_index_locator_obj>
+    )
+    target_include_directories(baseline_lca_sr PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${SR_INDEX_DIR}/include
+        ${SDSL_INCLUDE}
+        ${SR_BUILD_DIR}/_deps/json-src/single_include
+    )
+    target_compile_options(baseline_lca_sr PRIVATE -O3)
+    message(STATUS "baseline_lca_sr: habilitado")
+else()
+    message(STATUS "baseline_lca_sr: deshabilitado (sdsl o sr-index no encontrado)")
+endif()
+
+# ── test_baseline_sr: tests del pipeline LCA con SrIndexLocator ──────────────
+# No linkea con index.cpp/lz77/ para evitar colisiones de símbolos sr-index.
+# El cross-check LZ77 vs sr-index se realiza en baseline_lca_sr (herramienta).
+if(EXISTS ${SR_INDEX_DIR}/include AND EXISTS ${SDSL_INCLUDE}/sdsl)
+    add_executable(test_baseline_sr
+        tests/test_baseline_sr.cpp
+        src/mem/extractor.cpp
+        $<TARGET_OBJECTS:sr_index_locator_obj>
+    )
+    target_include_directories(test_baseline_sr PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${SR_INDEX_DIR}/include
+        ${SDSL_INCLUDE}
+        ${SR_BUILD_DIR}/_deps/json-src/single_include
+    )
+    target_link_libraries(test_baseline_sr PRIVATE GTest::gtest_main)
+    target_compile_options(test_baseline_sr PRIVATE -O2)
+    gtest_discover_tests(test_baseline_sr)
+    message(STATUS "test_baseline_sr: habilitado")
+else()
+    message(STATUS "test_baseline_sr: deshabilitado (sdsl o sr-index no encontrado)")
+endif()
+
 # Directorios de tests y benchmarks (a agregar después)
 # add_subdirectory(tests)
 # add_subdirectory(bench)

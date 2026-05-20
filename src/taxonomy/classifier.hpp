@@ -1,7 +1,6 @@
 #pragma once
 
 #include "lca.hpp"
-#include "../index.hpp"
 #include "../mem/extractor.hpp"
 #include <climits>
 #include <vector>
@@ -73,24 +72,15 @@ public:
     /**
      * Pipeline completa: extrae MEMs de la query y clasifica taxonómicamente.
      *
-     * 1. Extrae MEMs con MEMExtractor sobre el FM-index del índice LZ77.
-     * 2. Por cada MEM: locate_extremal(patrón) → {pos_min, pos_max}.
-     * 3. classify_extremal(pos_min, pos_max) → nodo LCA del MEM.
-     * 4. LCA global de todos los MEMs → resultado final.
+     * Acepta cualquier índice con método locate_extremal(string) → {pos_min, pos_max}.
+     * Compatible con LZ77Index (primary-only, O(m·log²z) sin enumerar) y
+     * SrIndexLocator (full, O(occ) enumerando todas las ocurrencias).
      *
-     * Retorna -1 si no se encontraron MEMs con ocurrencias primarias.
-     *
-     * Limitación conocida (primary-only): MEMs que caen completamente dentro
-     * de una frase LZ77 (sin cruzar ningún boundary) no tienen ocurrencias
-     * primarias y son ignorados — la clasificación puede ser menos específica
-     * que con ocurrencias secundarias.
-     *
-     * @param query   Secuencia query (lectura de ADN)
-     * @param index   Índice LZ77 construido sobre los genomas de referencia
-     * @param min_len Largo mínimo de MEM a considerar (default: 31)
+     * Retorna -1 si no se encontraron MEMs con ocurrencias.
      */
+    template <typename Index>
     int classify_read(const std::string& query,
-                      const LZ77Index& index,
+                      const Index& index,
                       const MEMExtractor& extractor,
                       size_t min_len = 31) const {
         const auto mems = extractor.extract(query, min_len);
@@ -99,7 +89,7 @@ public:
         for (const auto& mem : mems) {
             const std::string pattern = query.substr(mem.query_start, mem.length);
             const auto [pos_min, pos_max] = index.locate_extremal(pattern);
-            if (pos_min == SIZE_MAX) continue;  // sin ocurrencias primarias
+            if (pos_min == SIZE_MAX) continue;
 
             const int node = classify_extremal(pos_min, pos_max);
             if (node < 0) continue;
