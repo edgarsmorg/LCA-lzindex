@@ -47,57 +47,65 @@ Para clasificación taxonómica, la pregunta no es "¿dónde aparecen TODAS las 
 ## Estructura del repositorio
 
 ```
-memoria-lz77-tax/
+LCA-lzindex/
 ├── CLAUDE.md              ← este archivo
 ├── CMakeLists.txt         ← build system principal
 ├── src/
+│   ├── main.cpp           ← entry point (placeholder)
+│   ├── index.hpp / .cpp   ← LZ77Index: pipeline pública; usa sri::RCSA (PIMPL)
 │   ├── lz77/
-│   │   ├── parser.hpp     ← parsing LZ77 desde SA o desde RLBWT
-│   │   ├── parser.cpp
-│   │   ├── phrase.hpp     ← struct Phrase { size_t start_pos, length; uint8_t next_char; }
-│   │   │                     NOTA: NO almacenamos source — no propagamos secundarias
-│   │   └── grid.hpp       ← construcción de la grilla 2D (solo puntos primarios)
+│   │   ├── phrase.hpp     ← struct Phrase { start_pos, length, next_char }
+│   │   ├── parser.hpp/cpp ← parsing LZ77 greedy desde SA (divsufsort + Kasai)
+│   │   └── grid.hpp/cpp   ← Grid2D: wt_int + sd_vector fwd/rev + RMQ extremal
 │   ├── wavelet/
-│   │   ├── wt_rmq.hpp     ← Wavelet Tree + RMQ integrado (custom sobre sdsl)
-│   │   └── wt_rmq.cpp
-│   ├── bwt/
-│   │   ├── rlbwt.hpp      ← lector de BWT desde ropebwt3 (.fmd)
-│   │   └── bitvectors.hpp ← bitvectors rank/select para mapeo BWT↔frases
+│   │   ├── wt_rmq_min.hpp/cpp ← legacy: WT pointer-based + RMQ topológico
+│   │   └── wm_rmq_min.hpp/cpp ← DEFAULT: wavelet matrix plana + RMQ por nivel
 │   ├── mem/
-│   │   ├── extractor.hpp  ← extracción de MEMs usando la BWT
-│   │   └── mem.hpp        ← struct MEM { size_t query_start, ref_start, length; }
+│   │   ├── mem.hpp        ← struct MEM { query_start, ref_start, length }
+│   │   └── extractor.hpp/cpp ← extracción de MEMs (sliding window sobre BWT)
 │   ├── taxonomy/
-│   │   ├── lca.hpp        ← cómputo de LCA en el árbol filogenético
-│   │   └── classifier.hpp ← pipeline completa de clasificación
-│   ├── index.hpp          ← interfaz pública del LZ77-index
-│   └── index.cpp
-├── tests/
-│   ├── test_lz77.cpp      ← tests del parser y de z vs Pizza&Chili
-│   ├── test_grid.cpp      ← tests de la grilla: count y locate vs brute-force
-│   ├── test_wt_rmq.cpp    ← tests del Wavelet Tree + RMQ
-│   ├── test_mem.cpp       ← tests de MEMs vs ropebwt3
-│   └── test_classify.cpp  ← tests de clasificación end-to-end
-├── bench/
-│   ├── bench_construct.cpp ← benchmark de construcción (tiempo + memoria peak)
-│   ├── bench_query.cpp     ← benchmark de count/locate (µs/query, µs/occ)
-│   └── bench_compare.cpp   ← comparación con sr-index
+│   │   ├── lca.hpp        ← PhyloTree con LCA naive (depth + subida)
+│   │   └── classifier.hpp ← Classifier::classify_read (template sobre Index)
+│   └── baseline/
+│       └── sr_index_locator.hpp/cpp ← wrapper PIMPL del sr-index para comparación
+├── tests/                  ← GoogleTest (FetchContent)
+│   ├── test_lz77.cpp
+│   ├── test_grid.cpp
+│   ├── test_wt_rmq_min.cpp
+│   ├── test_wm_rmq_min.cpp
+│   ├── test_index.cpp
+│   ├── test_mem.cpp
+│   ├── test_classify.cpp
+│   └── test_baseline_sr.cpp
+├── tools/                  ← binarios auxiliares (bench y baseline)
+│   ├── measure_index.cpp   ← desglose de tamaño por componente
+│   ├── bench_special.cpp   ← micro-bench de query_special
+│   ├── baseline_lca_sr.cpp ← pipeline LCA end-to-end con sr-index
+│   ├── sr_locate.cpp       ← locate sobre sr-index puro
+│   ├── makeData.c          ← generador sintético (Mersenne Twister)
+│   └── mtwister.{c,h}
+├── bench/                  ← (vacío — pendiente)
 ├── scripts/
-│   ├── download_corpus.sh  ← descarga Pizza&Chili repetitive corpus
-│   ├── build_bwt.sh        ← wrapper para ropebwt3 build
-│   ├── extract_mems.sh     ← wrapper para ropebwt3 mem
-│   ├── run_benchmarks.sh   ← ejecución completa con drop_caches
-│   └── plot_results.py     ← scatter plots espacio vs tiempo
-├── data/                   ← gitignore, aquí van los datasets
-│   ├── escherichia_coli/
-│   ├── cere/
-│   ├── para/
-│   └── influenza/
+│   ├── build_bwt.sh        ← wrapper ropebwt3 build
+│   ├── download_corpus.sh  ← descarga Pizza&Chili
+│   ├── clean.sh            ← limpia caché sdsl/sr-index/ropebwt3
+│   ├── gen_synthetic.py
+│   ├── gen_synthetic_large.py
+│   ├── run_baseline.sh / run_sr_index.sh / bench_vs_sr.sh
+│   └── test_synthetic_lca.py
+├── data/                   ← gitignore
+│   ├── Escherichia_Coli.fa
+│   └── synthetic/
 ├── docs/
-│   └── memoria.tex         ← documento LaTeX de la memoria
-└── extern/                 ← dependencias externas (submodules o FetchContent)
-    ├── sdsl-lite/          ← duscob/sdsl-lite (fork con modificaciones para sr-index)
+│   ├── glosario.md         ← nomenclatura del proyecto
+│   └── *.pdf               ← papers de referencia
+├── results/                ← resúmenes de sesión y análisis
+└── external/               ← dependencias (clonadas, no submodules)
+    ├── sdsl-lite/          ← duscob fork, header-only
     ├── ropebwt3/
-    └── sr-index/
+    ├── sr-index/
+    ├── big-bwt/
+    └── uiHRDC/
 ```
 
 ## Dependencias y compilación
@@ -117,27 +125,23 @@ memoria-lz77-tax/
 
 ```bash
 # Setup inicial
-# NOTA: sdsl-lite de duscob NO es header-only — requiere compilación.
-# Si sr-index ya lo descarga via FetchContent, reusar ese build.
-# Si se instala manualmente:
+# NOTA: el fork duscob/sdsl-lite ES header-only (divsufsort incluido inline,
+# sin libsdsl.a). Basta con tener los headers visibles en $HOME/.local/include.
 git clone --recursive https://github.com/duscob/sdsl-lite.git
-cd sdsl-lite && mkdir build && cd build
-cmake .. -DCMAKE_INSTALL_PREFIX=$HOME/.local
-make -j$(nproc) && make install
+cd sdsl-lite && ./install.sh $HOME/.local
 
-# Build del proyecto
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_CXX_STANDARD=17 \
-  -DCMAKE_CXX_FLAGS="-O3 -DNDEBUG -march=native -msse4.2 -mbmi -mbmi2" \
-  -DCMAKE_PREFIX_PATH=$HOME/.local
+# Build del proyecto (CMakeLists usa SDSL_INCLUDE = $HOME/.local/include
+# y SR_INDEX_INCLUDE = external/sr-index/include directamente).
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel $(nproc)
 
-# Ejecutar tests
+# Ejecutar tests (GoogleTest se descarga vía FetchContent al primer build)
 cd build && ctest --output-on-failure
 
-# Ejecutar benchmarks
-./build/bench/bench_construct --benchmark_format=json > results/construct.json
-./build/bench/bench_query --benchmark_format=json > results/query.json
+# Binarios auxiliares actuales (no hay todavía bench/ propio)
+./build/measure_index <texto>          # desglose de espacio por componente
+./build/baseline_lca_sr <args>         # pipeline LCA con sr-index
+./build/sr_locate <args>               # locate sobre sr-index puro
 ```
 
 ### Flags de compilación obligatorios
@@ -200,21 +204,41 @@ size_t phrase_id = rank_bv(pos);         // ¿en qué frase cae pos?
 size_t phrase_start = select_bv(id + 1); // ¿dónde empieza la frase id? (1-indexed)
 ```
 
-### FM-index (para verificación)
+### CSA primaria: `sri::RCSA<>` (no `csa_wt`)
+
+A partir del commit `8f946ff` el índice usa `sri::RCSA<>` del sr-index como
+CSA forward/reverso, envuelto en `CountOnlyRCSA` (subclase definida en
+`src/index.cpp`) que **solo** carga/serializa `Alphabet + PsiCoreRLE` y stubs
+out de Locate. Motivación: en E. coli (108 MB) bajó la CSA de 9.20 → 3.76 bpc.
+Locate vive afuera de la CSA (via Grid2D + WmMinRmq), por eso podemos descartar
+samples/marks de la RCSA.
+
+Para verificación rápida contra un FM-index estándar de sdsl-lite:
 
 ```cpp
 #include <sdsl/suffix_arrays.hpp>
-
-csa_wt<wt_huff<>, 32, 32> fm_index;
-construct(fm_index, "text_file.txt", 1);  // 1 = archivo en disco
-
-// Count
-auto cnt = count(fm_index, "ACGT");
-
-// Locate
-auto occ = locate(fm_index, "ACGT");
-// occ es un int_vector con las posiciones — usar como ground truth
+sdsl::csa_wt<sdsl::wt_huff<>, 32, 32> fm;
+sdsl::construct(fm, "text_file.txt", 1);
+auto cnt = sdsl::count(fm, "ACGT");
+auto occ = sdsl::locate(fm, "ACGT");  // ground truth en tests
 ```
+
+### Wavelet Matrix + RMQ por nivel (`WmMinRmq`, default)
+
+Reemplazo de `WtMinRmq` (pointer-based, O(z) instancias sdsl, ~63 bpc en E. coli)
+por una wavelet matrix plana: `sdsl::wm_int<>` + un `rmq_succinct_sct` por nivel.
+Espacio O(z log σ) bits con O(log σ) instancias sdsl en lugar de O(z).
+
+```cpp
+#include "wavelet/wm_rmq_min.hpp"
+lz77tax::WmMinRmq wm;
+wm.build(y_values, text_pos, sigma);     // y_values en orden X
+auto r = wm.range_argmin_2d(x_lo, x_hi, y_lo, y_hi, text_pos);
+// r.argmin_global = índice en [0,n) con text_pos[idx] mínimo
+```
+
+`Grid2D::build()` toma `RmqVariant` (`Wm` default, `Wt` legacy para benchmarks
+comparativos). `WtMinRmq` se conserva solo para reproducir mediciones previas.
 
 ## ropebwt3 — comandos clave
 
@@ -310,7 +334,8 @@ Algoritmo de Policriti y Prezza (Algorithmica 2018). Tiempo O(n log r), espacio 
 | Grilla 2D de puntos | ✅ | ✅ | — |
 | Wavelet Tree sobre grilla | ✅ | ✅ | — |
 | Bitvectors rank/select (BWT↔frases) | ✅ | ✅ | — |
-| RMQ sucinto en WT | ❌ (no en original) | ✅ (nuestra contribución) | +2z bits (vale la pena) |
+| RMQ sucinto en WT/WM | ❌ (no en original) | ✅ `WmMinRmq` por defecto (legacy `WtMinRmq` opcional) | +O(z log σ) bits |
+| CSA forward/reverso | csa_wt completa | `sri::RCSA<>` con `CountOnlyRCSA` (sin samples de locate) | E. coli: 9.20 → 3.76 bpc |
 | **Array de profundidad D[1..z]** | ✅ (para prevLess) | ❌ **DESCARTADO** | z·log(n) bits |
 | **Punteros source inversos** | ✅ (para secundarias) | ❌ **DESCARTADO** | z·log(n) bits |
 | **Permutación P + P⁻¹** | ✅ (para extract) | ❌ **DESCARTADO** | 2z·log(z) bits |
@@ -339,6 +364,13 @@ Para cada partición P[1..i] · P[i+1..m] (con i = 1..m-1):
 - **NO propagamos ocurrencias secundarias** — para clasificación taxonómica solo
   necesitamos las posiciones extremales, que se obtienen directamente con RMQ
 
+### Caso especial: patrones end-aligned dentro de una frase
+
+`Grid2D::query_special(sp_rev, ep_rev, plen)` (commit `316b501`) captura el caso
+en que el patrón termina exactamente al final de una frase k y cabe dentro de ella
+(`phrase_total_len_[k] >= plen`). Esto mitiga parcialmente el "caso patológico"
+de MEMs internos a una frase (ver sección "Trampa del diseño primarias-only").
+
 ### Localización extremal con RMQ
 
 En vez de listar todos los puntos del rectángulo:
@@ -356,14 +388,18 @@ auto genome_id = rank_genome_bv(min_text_pos);
 
 ## Datasets de desarrollo y prueba
 
-### Pizza & Chili Repetitive Corpus
+### Datasets actualmente en el repo
 
-| Dataset | Tamaño | σ | z (LZ77) | r (BWT runs) | Uso |
-|---------|--------|---|----------|---------------|-----|
-| Escherichia_coli | ~108 MB | 5 | verificar | verificar | Dev + tests |
-| cere | ~461 MB | 5 | verificar | verificar | Benchmark principal |
-| para | ~429 MB | 5 | verificar | verificar | Benchmark principal |
-| influenza | ~154 MB | 15 | verificar | verificar | Benchmark rápido |
+| Dataset | Tamaño | z (LZ77) | Estado | Uso |
+|---------|--------|----------|--------|-----|
+| Escherichia_Coli.fa | ~108 MB | ~1.75M | descargado | Dev + tests + benchmark principal |
+| synthetic/z_10k | 1 MB | ~6.9k | generado | Verificación overhead WtMinRmq |
+| synthetic/z_50k | 5 MB | ~27k | generado | Verificación overhead WtMinRmq |
+| synthetic/z_100k | 10 MB | ~49k | generado | Verificación overhead WtMinRmq |
+| synthetic (LCA toy) | 85 B | trivial | generado | Validación end-to-end del pipeline LCA |
+
+Pendientes de bajar de Pizza & Chili (si se quiere ampliar la evaluación):
+`cere` (~461 MB), `para` (~429 MB), `influenza` (~154 MB).
 
 Descarga: `https://pizzachili.dcc.uchile.cl/repcorpus.html`
 
@@ -466,31 +502,33 @@ cd build && ctest --output-on-failure -j$(nproc)
 - **Caso patológico**: si un MEM aparece SOLO dentro de una frase LZ77 (sin cruzar
   límites), no tiene ocurrencia primaria → sería invisible para nuestro índice.
   Esto ocurre cuando el MEM es más corto que la frase que lo contiene.
-  **Mitigación**: MEMs largos (≥ longitud mínima de frase) siempre cruzan al menos un
-  límite. Para MEMs cortos, la evidencia taxonómica es débil de todos modos.
+  **Mitigación parcial implementada**: `Grid2D::query_special` (commit `316b501`)
+  captura patrones end-aligned que caben dentro de su frase contenedora.
+  **Mitigación heurística**: MEMs largos (≥ longitud mínima de frase) siempre cruzan
+  al menos un límite. Para MEMs cortos, la evidencia taxonómica es débil de todos modos.
 - **Test crítico**: verificar que para MEMs de longitud ≥ L_min, el LCA obtenido
   solo con primarias coincide con el LCA obtenido enumerando TODAS las ocurrencias
-  (usando FM-index como ground truth)
+  (usando FM-index como ground truth, o `SrIndexLocator` para corpus reales)
 
 ## Cronograma de 15 semanas
 
-| Semana | Fase | Entregable |
-|--------|------|-----------|
-| 1 | Setup | Entorno compilando, corpus descargado, BWT construida |
-| 2 | Teoría | Papers leídos, caps 1-2 escritos, sr-index operativo |
-| 3 | LZ77 | Parser LZ77 desde SA implementado y verificado |
-| 4 | LZ77 | Grilla 2D construida, bitvectors rank/select |
-| 5 | Grilla | Búsqueda brute-force sobre grilla, cap 3 escrito |
-| 6 | WT | `wt_int` integrado, count query funcional |
-| 7 | RMQ | RMQ en WT implementado, locate query funcional |
-| 8 | Verif | Correctitud verificada en 4 datasets, benchmarks preliminares |
-| 9 | MEMs | Extracción de MEMs conectada al índice |
-| 10 | Tax | Clasificación taxonómica (LCA) implementada |
-| 11 | Opt | Hot paths optimizados, benchmark completo |
-| 12 | Eval | sr-index benchmarked, comparación cuantitativa |
-| 13 | Eval | Análisis de resultados, caps 4-5 escritos |
-| 14 | Doc | Borrador completo, revisión con profesor |
-| 15 | Doc | Memoria entregada, defensa preparada |
+| Semana | Fase | Entregable | Estado |
+|--------|------|-----------|--------|
+| 1 | Setup | Entorno compilando, corpus descargado, BWT construida | ✅ |
+| 2 | Teoría | Papers leídos, caps 1-2 escritos, sr-index operativo | ✅ (sr-index ok; escritura pendiente) |
+| 3 | LZ77 | Parser LZ77 desde SA implementado y verificado | ✅ |
+| 4 | LZ77 | Grilla 2D construida, bitvectors rank/select | ✅ |
+| 5 | Grilla | Búsqueda brute-force sobre grilla, cap 3 escrito | ✅ (brute-force; escritura pendiente) |
+| 6 | WT | `wt_int` integrado, count query funcional | ✅ |
+| 7 | RMQ | RMQ en WT implementado, locate query funcional | ✅ (WtMinRmq + WmMinRmq) |
+| 8 | Verif | Correctitud verificada, benchmarks preliminares | 🟡 (solo E. coli + synthetic) |
+| 9 | MEMs | Extracción de MEMs conectada al índice | ✅ |
+| 10 | Tax | Clasificación taxonómica (LCA) implementada | ✅ |
+| 11 | Opt | Hot paths optimizados, benchmark completo | 🟡 (RCSA + wavelet matrix integrados) |
+| 12 | Eval | sr-index benchmarked, comparación cuantitativa | 🟡 (`baseline_lca_sr` operativo) |
+| 13 | Eval | Análisis de resultados, caps 4-5 escritos | ⏳ |
+| 14 | Doc | Borrador completo, revisión con profesor | ⏳ |
+| 15 | Doc | Memoria entregada, defensa preparada | ⏳ |
 
 ## Qué cortar si el tiempo se agota (en orden de prioridad)
 
@@ -507,7 +545,8 @@ cd build && ctest --output-on-failure -j$(nproc)
 - **Headers**: `.hpp` para headers, `.cpp` para implementación
 - **Includes**: `#pragma once` en todos los headers
 - **Documentación**: Doxygen comments en interfaces públicas
-- **Formato**: clang-format con estilo Google (`.clang-format` en raíz)
+- **Formato**: aún sin `.clang-format` en raíz — mantener estilo a mano (4 espacios,
+  llaves K&R) hasta que se agregue uno
 
 ## Papers de referencia rápida
 
