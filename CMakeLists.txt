@@ -222,6 +222,64 @@ else()
     message(STATUS "test_baseline_sr: deshabilitado (sdsl o sr-index no encontrado)")
 endif()
 
+# ── test_compare_indexes: cross-check LZ77Index vs SrIndexLocator en pipeline LCA ──
+# Linkea AMBOS (index.cpp/lz77/ + sr_index_locator_obj) — posible porque el PIMPL
+# garantiza que los símbolos del sr-index solo están en sr_index_locator_obj y no
+# colisionan con index.cpp (que no incluye headers del sr-index).
+if(EXISTS ${SR_INDEX_DIR}/include AND EXISTS ${SDSL_INCLUDE}/sdsl)
+    add_executable(test_compare_indexes
+        tests/test_compare_indexes.cpp
+        src/index.cpp
+        src/mem/extractor.cpp
+        src/lz77/parser.cpp
+        src/lz77/grid.cpp
+        src/wavelet/wt_rmq_min.cpp
+        src/wavelet/wm_rmq_min.cpp
+        $<TARGET_OBJECTS:sr_index_locator_obj>
+    )
+    target_include_directories(test_compare_indexes PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${SR_INDEX_DIR}/include
+        ${SDSL_INCLUDE}
+        ${SR_BUILD_DIR}/_deps/json-src/single_include
+    )
+    # --allow-multiple-definition: index.cpp y sr_index_locator_obj ambos expanden
+    # los mismos templates inline del sr-index. Las definiciones son idénticas (mismo
+    # header), así que es seguro pedir al linker que use la primera y descarte el resto.
+    target_link_libraries(test_compare_indexes PRIVATE GTest::gtest_main
+        -Wl,--allow-multiple-definition)
+    target_compile_options(test_compare_indexes PRIVATE -O2)
+    gtest_discover_tests(test_compare_indexes)
+    message(STATUS "test_compare_indexes: habilitado")
+else()
+    message(STATUS "test_compare_indexes: deshabilitado (sdsl o sr-index no encontrado)")
+endif()
+
+# ── compare_classifiers: pipeline LCA end-to-end LZ77 vs sr-index, emite CSV ────
+if(EXISTS ${SR_INDEX_DIR}/include AND EXISTS ${SDSL_INCLUDE}/sdsl)
+    add_executable(compare_classifiers
+        tools/compare_classifiers.cpp
+        src/index.cpp
+        src/mem/extractor.cpp
+        src/lz77/parser.cpp
+        src/lz77/grid.cpp
+        src/wavelet/wt_rmq_min.cpp
+        src/wavelet/wm_rmq_min.cpp
+        $<TARGET_OBJECTS:sr_index_locator_obj>
+    )
+    target_include_directories(compare_classifiers PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${SR_INDEX_DIR}/include
+        ${SDSL_INCLUDE}
+        ${SR_BUILD_DIR}/_deps/json-src/single_include
+    )
+    target_link_libraries(compare_classifiers PRIVATE -Wl,--allow-multiple-definition)
+    target_compile_options(compare_classifiers PRIVATE -O3)
+    message(STATUS "compare_classifiers: habilitado")
+else()
+    message(STATUS "compare_classifiers: deshabilitado (sdsl o sr-index no encontrado)")
+endif()
+
 # Directorios de tests y benchmarks (a agregar después)
 # add_subdirectory(tests)
 # add_subdirectory(bench)
