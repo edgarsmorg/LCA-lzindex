@@ -133,8 +133,8 @@ public:
      * Retorna {count, boundary_max} donde boundary_max = start_{k+1} máximo
      * entre los puntos hallados. Si count==0, boundary_max = 0.
      *
-     * Internamente usa wt_max_rmq_ construido sobre n-1-text_pos_[j]:
-     * argmin(invertido) == argmax(original).
+     * Internamente usa wt_max_rmq_ / wm_max_rmq_ (RMQ<false>) sobre text_pos_
+     * directamente: argmax sin necesidad de invertir valores.
      */
     struct MaxResult {
         size_t count;        ///< 0 si rectángulo vacío
@@ -166,7 +166,7 @@ public:
     const sdsl::sd_vector<>& bv_rev()    const { return bv_rev_; }
     const WtMinRmq&          wt_min_rmq()  const { return wt_min_rmq_; }
     const WmMinRmq&          wm_min_rmq()  const { return wm_min_rmq_; }
-    const WmMinRmq&          wm_max_rmq()  const { return wm_max_rmq_; }
+    const WmMaxRmq&          wm_max_rmq()  const { return wm_max_rmq_; }
     RmqVariant               rmq_variant() const { return variant_; }
     /// Posición en el texto del boundary k+1 para el punto con índice WT wt_idx.
     size_t text_pos(size_t wt_idx) const { return text_pos_[wt_idx]; }
@@ -185,12 +185,11 @@ private:
     sdsl::sd_vector<>::rank_1_type  rank_fwd_;
     sdsl::sd_vector<>::rank_1_type  rank_rev_;
     sdsl::int_vector<>              text_pos_;        ///< text_pos_[j] = start_{k+1}, compacto
-    sdsl::int_vector<>              text_pos_inv_;    ///< text_pos_inv_[j] = n-1 - text_pos_[j]
     sdsl::int_vector<>              phrase_total_len_;///< phrase_total_len_[j] = start_{k+1} - start_k
     WtMinRmq                        wt_min_rmq_;      ///< WT+RMQ<min> topológico (legacy, solo si variant==Wt)
-    WtMinRmq                        wt_max_rmq_;      ///< WT+RMQ<min> sobre invertidos (legacy, solo si variant==Wt)
+    WtMaxRmq                        wt_max_rmq_;      ///< WT+RMQ<max> topológico (legacy, solo si variant==Wt)
     WmMinRmq                        wm_min_rmq_;      ///< WM+RMQ<min> flat wavelet matrix (solo si variant==Wm)
-    WmMinRmq                        wm_max_rmq_;      ///< WM+RMQ<min> sobre invertidos → argmax (solo si variant==Wm)
+    WmMaxRmq                        wm_max_rmq_;      ///< WM+RMQ<max> flat wavelet matrix (solo si variant==Wm)
     RmqVariant                      variant_ = RmqVariant::Wm;
 
     /// Núcleo compartido: recibe las z-1 coordenadas y los boundaries start_{k+1},

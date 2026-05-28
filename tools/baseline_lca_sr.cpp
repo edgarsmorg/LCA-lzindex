@@ -28,6 +28,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <sys/resource.h>
 
 #include "baseline/sr_index_locator.hpp"
 
@@ -146,6 +147,11 @@ int main(int argc, char** argv) {
 
     const double us_per_query = total_us / static_cast<double>(patterns.size());
 
+    // Peak RSS al finalizar el benchmark
+    struct rusage ru{};
+    getrusage(RUSAGE_SELF, &ru);
+    const long peak_kb = ru.ru_maxrss;  // en KB en Linux
+
     std::cout << "=== locate_extremal (sr-index, sr=" << sr << ") ===\n";
     std::cout << std::fixed << std::setprecision(2);
     std::cout << "  patrones con ocurrencias : " << hits    << "\n";
@@ -153,6 +159,9 @@ int main(int argc, char** argv) {
     std::cout << "  tiempo total             : "
               << total_us / 1e6 << " s\n";
     std::cout << "  µs/query                 : " << us_per_query << "\n";
+    std::cout << "  peak RSS                 : " << peak_kb << " KB ("
+              << std::fixed << std::setprecision(1)
+              << peak_kb / 1024.0 << " MB)\n";
 
     return 0;
 }

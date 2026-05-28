@@ -63,8 +63,7 @@ void Grid2D::build_from_coords(
 
     // text_pos_ compact: valores en [0, n-1], width = ceil(log2(n)) bits
     const uint8_t tp_w = n > 1 ? static_cast<uint8_t>(sdsl::bits::hi(n - 1) + 1) : 1;
-    text_pos_     = sdsl::int_vector<>(z1, 0, tp_w);
-    text_pos_inv_ = sdsl::int_vector<>(z1, 0, tp_w);
+    text_pos_ = sdsl::int_vector<>(z1, 0, tp_w);
 
     // phrase_total_len_ usa su propio ancho: max_phrase_len << n en textos repetitivos
     const size_t max_pl = *std::max_element(phrase_lens.begin(), phrase_lens.end());
@@ -82,7 +81,6 @@ void Grid2D::build_from_coords(
         assert(y_rel < z1 && "y_rel fuera de rango");
         R[j]                 = y_rel;
         text_pos_[j]         = boundaries[k];
-        text_pos_inv_[j]     = (n - 1) - boundaries[k];
         phrase_total_len_[j] = phrase_lens[k];
     }
 
@@ -95,11 +93,11 @@ void Grid2D::build_from_coords(
         for (size_t j = 0; j < z1; ++j)
             ys[j] = static_cast<size_t>(R[j]);
         if (variant == RmqVariant::Wt) {
-            wt_min_rmq_.build(ys, text_pos_,     z1);
-            wt_max_rmq_.build(ys, text_pos_inv_, z1);
+            wt_min_rmq_.build(ys, text_pos_, z1);
+            wt_max_rmq_.build(ys, text_pos_, z1);
         } else {
-            wm_min_rmq_.build(ys, text_pos_,     z1);
-            wm_max_rmq_.build(ys, text_pos_inv_, z1);
+            wm_min_rmq_.build(ys, text_pos_, z1);
+            wm_max_rmq_.build(ys, text_pos_, z1);
         }
     }
 }
@@ -338,15 +336,14 @@ Grid2D::MaxResult Grid2D::query_max_2d(size_t sp_right, size_t ep_right,
     const size_t vrb = rank_rev_(ep_left + 1);
     if (vrb == 0 || vlb >= vrb) return {0, 0};
 
-    // argmin de text_pos_inv_ = argmax de text_pos_
     if (variant_ == RmqVariant::Wt) {
         if (wt_max_rmq_.size() == 0) return {0, 0};
-        const auto r = wt_max_rmq_.range_argmin_2d(lb, rb - 1, vlb, vrb - 1, text_pos_inv_);
+        const auto r = wt_max_rmq_.range_argmin_2d(lb, rb - 1, vlb, vrb - 1, text_pos_);
         if (r.count == 0) return {0, 0};
         return {r.count, static_cast<size_t>(text_pos_[r.argmin_global])};
     } else {
         if (wm_max_rmq_.size() == 0) return {0, 0};
-        const auto r = wm_max_rmq_.range_argmin_2d(lb, rb - 1, vlb, vrb - 1, text_pos_inv_);
+        const auto r = wm_max_rmq_.range_argmin_2d(lb, rb - 1, vlb, vrb - 1, text_pos_);
         if (r.count == 0) return {0, 0};
         return {r.count, static_cast<size_t>(text_pos_[r.argmin_global])};
     }
