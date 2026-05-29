@@ -123,6 +123,9 @@ int main(int argc, char** argv) {
         patterns.emplace_back(text.substr(pos, plen));
     }
 
+    // Parseo para brute-force (el índice ya liberó phrases_ tras build)
+    const auto phrases_bf = LZ77Parser().parse(text + '\0');
+
     // ── Contar y validar ────────────────────────────────────────────────────
     int mismatches = 0;
     int special_only_detected = 0;   // patrones donde idx.count > 0 SOLO por special
@@ -133,14 +136,14 @@ int main(int argc, char** argv) {
     for (const auto& p : patterns) {
         const size_t got = idx.count(p);
         total_count += got;
-        const size_t exp = bf_primary_count(text, p, idx.phrases());
+        const size_t exp = bf_primary_count(text, p, phrases_bf);
         if (got != exp) {
             ++mismatches;
             std::cerr << "MISMATCH pattern='" << p
                       << "' got=" << got << " exp=" << exp << "\n";
         }
         // ¿es primario SOLO por special?
-        const size_t sonly = bf_special_only_count(text, p, idx.phrases());
+        const size_t sonly = bf_special_only_count(text, p, phrases_bf);
         if (sonly > 0) ++special_only_detected;
     }
     double query_ms = std::chrono::duration<double,std::milli>(Clock::now()-t0).count();

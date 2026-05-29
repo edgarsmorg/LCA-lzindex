@@ -140,10 +140,11 @@ std::filesystem::path make_tmp_dir(const std::string& prefix) {
 void LZ77Index::build(const std::string& text, RmqVariant variant) {
     const std::string text_s = text + '\0';
     n_ = text_s.size();
-    phrases_ = LZ77Parser().parse(text_s);
+    LZ77Parsing phrases = LZ77Parser().parse(text_s);
+    z_ = phrases.size();
 
-    alphabet_.fill(false);
-    for (unsigned char c : text) alphabet_[c] = true;
+    alphabet_.reset();
+    for (unsigned char c : text) alphabet_.set(c);
 
     rcsa_ = std::make_unique<RCSAImpl>();
 
@@ -163,7 +164,10 @@ void LZ77Index::build(const std::string& text, RmqVariant variant) {
     std::filesystem::remove(path_rev);
     std::filesystem::remove_all(tmp_rev);
 
-    grid_.build(phrases_, isa_fwd, isa_rev, n_, variant);
+    grid_.build(phrases, isa_fwd, isa_rev, n_, variant);
+
+    // Liberar la RAM del vector de frases: Grid2D ya extrajo todo lo que necesita.
+    phrases = LZ77Parsing{};
 }
 
 namespace {
@@ -205,9 +209,9 @@ bool rcsa_search(const CountOnlyRCSA& rcsa, const std::string& sub,
 }
 
 // Retorna true si todos los chars de s están en el alfabeto indexado.
-bool in_alphabet(const std::string& s, const std::array<bool, 256>& alpha) {
+bool in_alphabet(const std::string& s, const std::bitset<256>& alpha) {
     for (unsigned char c : s)
-        if (!alpha[c]) return false;
+        if (!alpha.test(c)) return false;
     return true;
 }
 }  // namespace
