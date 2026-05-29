@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <iosfwd>
 #include <vector>
 
 #include <sdsl/wm_int.hpp>
@@ -54,6 +55,10 @@ public:
     size_t alphabet_size() const { return sigma_; }
     size_t size_in_bytes() const;
     SizeBreakdown size_breakdown() const;
+
+    // ── Serialización ─────────────────────────────────────────────────────────
+    size_t serialize(std::ostream& out) const;
+    void   load(std::istream& in);
 
     WmRmq() = default;
     WmRmq(const WmRmq&)            = delete;

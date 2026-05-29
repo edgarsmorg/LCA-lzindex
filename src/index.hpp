@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <memory>
 #include <string>
+#include <filesystem>
 
 namespace lz77tax {
 
@@ -34,6 +35,19 @@ public:
      */
     void build(const std::string& text);
 
+
+    // ── Persistencia ──────────────────────────────────────────────────────────
+    /**
+     * Guarda el índice a disco en varios archivos con prefijo dado.
+     * Escribe: <prefix>.meta, <prefix>.grid, <prefix>.rcsa_fwd, <prefix>.rcsa_rev
+     */
+    void save(const std::filesystem::path& prefix) const;
+
+    /**
+     * Carga el índice desde los archivos generados por save().
+     * La instancia debe estar vacía (recién construida).
+     */
+    void load(const std::filesystem::path& prefix);
 
     // ── Query ─────────────────────────────────────────────────────────────────
     /**

@@ -184,6 +184,35 @@ size_t WmRmq<t_min>::size_in_bytes() const {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Serialización
+// ─────────────────────────────────────────────────────────────────────────────
+
+template <bool t_min>
+size_t WmRmq<t_min>::serialize(std::ostream& out) const {
+    size_t written = 0;
+    written += sdsl::write_member(n_,     out);
+    written += sdsl::write_member(sigma_, out);
+    written += sdsl::serialize(static_cast<const sdsl::wm_int<>&>(wm_), out);
+    const uint64_t nrmq = rmqs_.size();
+    written += sdsl::write_member(nrmq, out);
+    for (const auto& r : rmqs_)
+        written += sdsl::serialize(r, out);
+    return written;
+}
+
+template <bool t_min>
+void WmRmq<t_min>::load(std::istream& in) {
+    sdsl::read_member(n_,     in);
+    sdsl::read_member(sigma_, in);
+    sdsl::load(static_cast<sdsl::wm_int<>&>(wm_), in);
+    uint64_t nrmq = 0;
+    sdsl::read_member(nrmq, in);
+    rmqs_.resize(nrmq);
+    for (auto& r : rmqs_)
+        sdsl::load(r, in);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Instanciaciones explícitas
 // ─────────────────────────────────────────────────────────────────────────────
 

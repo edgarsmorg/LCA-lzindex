@@ -127,6 +127,19 @@ target_link_libraries(test_mem PRIVATE GTest::gtest_main)
 target_compile_options(test_mem PRIVATE -O2)
 gtest_discover_tests(test_mem)
 
+add_executable(test_index_roundtrip
+    tests/test_index_roundtrip.cpp
+    src/index.cpp
+    src/lz77/parser.cpp
+    src/lz77/grid.cpp
+    src/wavelet/wt_rmq_min.cpp
+    src/wavelet/wm_rmq_min.cpp
+)
+target_include_directories(test_index_roundtrip PRIVATE ${CMAKE_SOURCE_DIR}/src ${SDSL_INCLUDE})
+target_link_libraries(test_index_roundtrip PRIVATE GTest::gtest_main)
+target_compile_options(test_index_roundtrip PRIVATE -O2)
+gtest_discover_tests(test_index_roundtrip)
+
 # Habilitamos testing
 enable_testing()
 

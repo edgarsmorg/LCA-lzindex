@@ -7,6 +7,8 @@
 #include <sdsl/construct.hpp>
 #include <sdsl/int_vector.hpp>
 #include <sdsl/bits.hpp>
+#include <sdsl/io.hpp>
+#include <sdsl/util.hpp>
 
 namespace lz77tax {
 
@@ -329,6 +331,35 @@ Grid2D::MaxResult Grid2D::query_max_2d(size_t sp_right, size_t ep_right,
 // ─────────────────────────────────────────────────────────────────────────────
 // size_breakdown()
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Serialización
+// ─────────────────────────────────────────────────────────────────────────────
+
+size_t Grid2D::serialize(std::ostream& out) const {
+    size_t written = 0;
+    written += sdsl::serialize(wt_,              out);
+    written += sdsl::serialize(bv_fwd_,          out);
+    written += sdsl::serialize(bv_rev_,          out);
+    written += sdsl::serialize(text_pos_,        out);
+    written += sdsl::serialize(phrase_total_len_,out);
+    written += wm_min_rmq_.serialize(out);
+    written += wm_max_rmq_.serialize(out);
+    return written;
+}
+
+void Grid2D::load(std::istream& in) {
+    sdsl::load(wt_,               in);
+    sdsl::load(bv_fwd_,           in);
+    sdsl::load(bv_rev_,           in);
+    sdsl::load(text_pos_,         in);
+    sdsl::load(phrase_total_len_, in);
+    wm_min_rmq_.load(in);
+    wm_max_rmq_.load(in);
+    // rank_fwd_ y rank_rev_ guardan puntero a bv_*_: reconstruir tras cargar.
+    sdsl::util::init_support(rank_fwd_, &bv_fwd_);
+    sdsl::util::init_support(rank_rev_, &bv_rev_);
+}
 
 Grid2D::SizeBreakdown Grid2D::size_breakdown() const {
     SizeBreakdown bd{};

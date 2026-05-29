@@ -4,6 +4,7 @@
 #include "../wavelet/wm_rmq_min.hpp"
 
 #include <cstddef>
+#include <iosfwd>
 #include <string>
 #include <utility>
 #include <vector>
@@ -173,6 +174,10 @@ public:
         size_t wm_max_rmq;
     };
     SizeBreakdown size_breakdown() const;
+
+    // ── Serialización ─────────────────────────────────────────────────────────
+    size_t serialize(std::ostream& out) const;
+    void   load(std::istream& in);
 
     // rank_fwd_/rank_rev_ guardan punteros raw a bv_fwd_/bv_rev_: no es seguro
     // copiar ni mover Grid2D con los constructores implícitos. Prohibimos copia;
