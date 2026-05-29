@@ -137,7 +137,7 @@ std::filesystem::path make_tmp_dir(const std::string& prefix) {
 // build() — versión desde texto en memoria (small-scale y benchmark)
 // ─────────────────────────────────────────────────────────────────────────────
 
-void LZ77Index::build(const std::string& text, RmqVariant variant) {
+void LZ77Index::build(const std::string& text) {
     const std::string text_s = text + '\0';
     n_ = text_s.size();
     LZ77Parsing phrases = LZ77Parser().parse(text_s);
@@ -164,7 +164,7 @@ void LZ77Index::build(const std::string& text, RmqVariant variant) {
     std::filesystem::remove(path_rev);
     std::filesystem::remove_all(tmp_rev);
 
-    grid_.build(phrases, isa_fwd, isa_rev, n_, variant);
+    grid_.build(phrases, isa_fwd, isa_rev, n_);
 
     // Liberar la RAM del vector de frases: Grid2D ya extrajo todo lo que necesita.
     phrases = LZ77Parsing{};

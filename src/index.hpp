@@ -32,8 +32,7 @@ public:
      *
      * @param text  Texto sin centinela (e.g. ADN puro, sin '\0')
      */
-    void build(const std::string& text,
-               RmqVariant variant = RmqVariant::Wm);
+    void build(const std::string& text);
 
 
     // ── Query ─────────────────────────────────────────────────────────────────

@@ -18,9 +18,7 @@ void Grid2D::build_from_coords(
         const std::vector<std::pair<size_t, size_t>>& coords,
         const std::vector<size_t>& boundaries,
         const std::vector<size_t>& phrase_lens,
-        size_t n,
-        RmqVariant variant) {
-    variant_ = variant;
+        size_t n) {
 
     const size_t z1 = coords.size();  // z-1 puntos
     assert(boundaries.size() == z1 && "coords y boundaries deben tener el mismo tamaño");
@@ -87,18 +85,13 @@ void Grid2D::build_from_coords(
     // ── 4. Construir wt_int sobre R ───────────────────────────────────────────
     sdsl::construct_im(wt_, R);
 
-    // ── 5. Construir RMQ según variant ───────────────────────────────────────
+    // ── 5. Construir RMQ (WmMinRmq/WmMaxRmq) ─────────────────────────────────
     {
         std::vector<size_t> ys(z1);
         for (size_t j = 0; j < z1; ++j)
             ys[j] = static_cast<size_t>(R[j]);
-        if (variant == RmqVariant::Wt) {
-            wt_min_rmq_.build(ys, text_pos_, z1);
-            wt_max_rmq_.build(ys, text_pos_, z1);
-        } else {
-            wm_min_rmq_.build(ys, text_pos_, z1);
-            wm_max_rmq_.build(ys, text_pos_, z1);
-        }
+        wm_min_rmq_.build(ys, text_pos_, z1);
+        wm_max_rmq_.build(ys, text_pos_, z1);
     }
 }
 
@@ -106,8 +99,7 @@ void Grid2D::build_from_coords(
 // build() desde texto crudo (small-scale / tests)
 // ─────────────────────────────────────────────────────────────────────────────
 
-void Grid2D::build(const LZ77Parsing& phrases, const std::string& text,
-                   RmqVariant variant) {
+void Grid2D::build(const LZ77Parsing& phrases, const std::string& text) {
     const size_t n = text.size();
     const size_t z = phrases.size();
 
@@ -169,7 +161,7 @@ void Grid2D::build(const LZ77Parsing& phrases, const std::string& text,
         phrase_lens[k] = phrases[k].length + 1; // total length including trailing char
     }
 
-    build_from_coords(coords, boundaries, phrase_lens, n, variant);
+    build_from_coords(coords, boundaries, phrase_lens, n);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -179,8 +171,7 @@ void Grid2D::build(const LZ77Parsing& phrases, const std::string& text,
 void Grid2D::build(const LZ77Parsing& phrases,
                    const sdsl::int_vector<>& isa_fwd,
                    const sdsl::int_vector<>& isa_rev,
-                   size_t n,
-                   RmqVariant variant) {
+                   size_t n) {
     const size_t z = phrases.size();
 
     if (z <= 1) return;
@@ -197,7 +188,7 @@ void Grid2D::build(const LZ77Parsing& phrases,
         phrase_lens[k] = phrases[k].length + 1;
     }
 
-    build_from_coords(coords, boundaries, phrase_lens, n, variant);
+    build_from_coords(coords, boundaries, phrase_lens, n);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -269,17 +260,10 @@ Grid2D::MinResult Grid2D::query_min_2d(size_t sp_right, size_t ep_right,
     const size_t vrb = rank_rev_(ep_left + 1);
     if (vrb == 0 || vlb >= vrb) return {0, SIZE_MAX};
 
-    if (variant_ == RmqVariant::Wt) {
-        if (wt_min_rmq_.size() == 0) return {0, SIZE_MAX};
-        const auto r = wt_min_rmq_.range_argmin_2d(lb, rb - 1, vlb, vrb - 1, text_pos_);
-        if (r.count == 0) return {0, SIZE_MAX};
-        return {r.count, static_cast<size_t>(text_pos_[r.argmin_global])};
-    } else {
-        if (wm_min_rmq_.size() == 0) return {0, SIZE_MAX};
-        const auto r = wm_min_rmq_.range_argmin_2d(lb, rb - 1, vlb, vrb - 1, text_pos_);
-        if (r.count == 0) return {0, SIZE_MAX};
-        return {r.count, static_cast<size_t>(text_pos_[r.argmin_global])};
-    }
+    if (wm_min_rmq_.size() == 0) return {0, SIZE_MAX};
+    const auto r = wm_min_rmq_.range_argmin_2d(lb, rb - 1, vlb, vrb - 1, text_pos_);
+    if (r.count == 0) return {0, SIZE_MAX};
+    return {r.count, static_cast<size_t>(text_pos_[r.argmin_global])};
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -336,17 +320,10 @@ Grid2D::MaxResult Grid2D::query_max_2d(size_t sp_right, size_t ep_right,
     const size_t vrb = rank_rev_(ep_left + 1);
     if (vrb == 0 || vlb >= vrb) return {0, 0};
 
-    if (variant_ == RmqVariant::Wt) {
-        if (wt_max_rmq_.size() == 0) return {0, 0};
-        const auto r = wt_max_rmq_.range_argmin_2d(lb, rb - 1, vlb, vrb - 1, text_pos_);
-        if (r.count == 0) return {0, 0};
-        return {r.count, static_cast<size_t>(text_pos_[r.argmin_global])};
-    } else {
-        if (wm_max_rmq_.size() == 0) return {0, 0};
-        const auto r = wm_max_rmq_.range_argmin_2d(lb, rb - 1, vlb, vrb - 1, text_pos_);
-        if (r.count == 0) return {0, 0};
-        return {r.count, static_cast<size_t>(text_pos_[r.argmin_global])};
-    }
+    if (wm_max_rmq_.size() == 0) return {0, 0};
+    const auto r = wm_max_rmq_.range_argmin_2d(lb, rb - 1, vlb, vrb - 1, text_pos_);
+    if (r.count == 0) return {0, 0};
+    return {r.count, static_cast<size_t>(text_pos_[r.argmin_global])};
 }
 
 }  // namespace lz77tax
