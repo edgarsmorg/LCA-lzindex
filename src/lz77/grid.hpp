@@ -163,6 +163,17 @@ public:
     /// Posición en el texto del boundary k+1 para el punto con índice WT wt_idx.
     size_t text_pos(size_t wt_idx) const { return text_pos_[wt_idx]; }
 
+    struct SizeBreakdown {
+        size_t wt;
+        size_t bv_fwd, bv_rev;
+        size_t rank_fwd, rank_rev;
+        size_t text_pos;
+        size_t phrase_total_len;
+        size_t wm_min_rmq;
+        size_t wm_max_rmq;
+    };
+    SizeBreakdown size_breakdown() const;
+
     // rank_fwd_/rank_rev_ guardan punteros raw a bv_fwd_/bv_rev_: no es seguro
     // copiar ni mover Grid2D con los constructores implícitos. Prohibimos copia;
     // si en el futuro se necesita mover, implementar con sdsl::util::init_support.

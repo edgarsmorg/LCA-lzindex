@@ -326,4 +326,22 @@ Grid2D::MaxResult Grid2D::query_max_2d(size_t sp_right, size_t ep_right,
     return {r.count, static_cast<size_t>(text_pos_[r.argmin_global])};
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// size_breakdown()
+// ─────────────────────────────────────────────────────────────────────────────
+
+Grid2D::SizeBreakdown Grid2D::size_breakdown() const {
+    SizeBreakdown bd{};
+    bd.wt              = sdsl::size_in_bytes(wt_);
+    bd.bv_fwd          = sdsl::size_in_bytes(bv_fwd_);
+    bd.bv_rev          = sdsl::size_in_bytes(bv_rev_);
+    bd.rank_fwd        = sdsl::size_in_bytes(rank_fwd_);
+    bd.rank_rev        = sdsl::size_in_bytes(rank_rev_);
+    bd.text_pos        = sdsl::size_in_bytes(text_pos_);
+    bd.phrase_total_len= sdsl::size_in_bytes(phrase_total_len_);
+    bd.wm_min_rmq      = wm_min_rmq_.size_in_bytes();
+    bd.wm_max_rmq      = wm_max_rmq_.size_in_bytes();
+    return bd;
+}
+
 }  // namespace lz77tax

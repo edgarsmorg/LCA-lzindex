@@ -41,30 +41,31 @@ static void print_index_stats(const LZ77Index& idx, size_t n) {
     const Grid2D& grid = idx.grid();
     std::cout << "=== LZ77-Index (WmMinRmq): tamaño por componente ===\n";
 
-    const size_t wt_bytes    = sdsl::size_in_bytes(grid.wt());
-    const size_t bvfwd_bytes = sdsl::size_in_bytes(grid.bv_fwd());
-    const size_t bvrev_bytes = sdsl::size_in_bytes(grid.bv_rev());
+    const auto bd = grid.size_breakdown();
 
     const auto bd_min = grid.wm_min_rmq().size_breakdown();
     const auto bd_max = grid.wm_max_rmq().size_breakdown();
-    const size_t wm_min_total = bd_min.bv + bd_min.rank_sel + bd_min.rmq;
-    const size_t wm_max_total = bd_max.bv + bd_max.rank_sel + bd_max.rmq;
 
-    print_row("wt_int (grilla / count)",  wt_bytes,    n);
-    print_row("sd_vector fwd",            bvfwd_bytes, n);
-    print_row("sd_vector rev",            bvrev_bytes, n);
-    print_row("wm_min_rmq (bitvector)",   bd_min.bv,       n);
-    print_row("wm_min_rmq (rank+select)", bd_min.rank_sel, n);
-    print_row("wm_min_rmq (rmq BP)",      bd_min.rmq,      n);
-    print_row("wm_max_rmq (bitvector)",   bd_max.bv,       n);
-    print_row("wm_max_rmq (rank+select)", bd_max.rank_sel, n);
-    print_row("wm_max_rmq (rmq BP)",      bd_max.rmq,      n);
+    print_row("wt_int (grilla / count)",  bd.wt,              n);
+    print_row("sd_vector fwd",            bd.bv_fwd,          n);
+    print_row("sd_vector rev",            bd.bv_rev,          n);
+    print_row("rank_fwd + rank_rev",      bd.rank_fwd + bd.rank_rev, n);
+    print_row("text_pos (int_vector)",    bd.text_pos,        n);
+    print_row("phrase_total_len",         bd.phrase_total_len,n);
+    print_row("wm_min_rmq (bitvector)",   bd_min.bv,          n);
+    print_row("wm_min_rmq (rank+select)", bd_min.rank_sel,    n);
+    print_row("wm_min_rmq (rmq BP)",      bd_min.rmq,         n);
+    print_row("wm_max_rmq (bitvector)",   bd_max.bv,          n);
+    print_row("wm_max_rmq (rank+select)", bd_max.rank_sel,    n);
+    print_row("wm_max_rmq (rmq BP)",      bd_max.rmq,         n);
 
     const size_t csa_f_bytes = idx.csa_fwd_bytes();
     const size_t csa_r_bytes = idx.csa_rev_bytes();
     const size_t csa_total   = csa_f_bytes + csa_r_bytes;
-    const size_t grid_total  = wt_bytes + bvfwd_bytes + bvrev_bytes
-                             + wm_min_total + wm_max_total;
+    const size_t grid_total  = bd.wt + bd.bv_fwd + bd.bv_rev
+                             + bd.rank_fwd + bd.rank_rev
+                             + bd.text_pos + bd.phrase_total_len
+                             + bd.wm_min_rmq + bd.wm_max_rmq;
     const size_t total       = grid_total + csa_total;
 
     std::cout << "  " << std::string(50, '-') << "\n";
