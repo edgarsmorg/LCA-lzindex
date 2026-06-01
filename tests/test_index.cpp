@@ -103,8 +103,8 @@ static void check_count(const std::string& text,
     LZ77Index idx;
     idx.build(text);
 
-    // Brute-force sobre el mismo parsing interno
-    const size_t expected = bf_primary_count(text, pattern, idx.phrases());
+    const auto phrases_bf = LZ77Parser().parse(text + '\0');
+    const size_t expected = bf_primary_count(text, pattern, phrases_bf);
     const size_t got      = idx.count(pattern);
 
     EXPECT_EQ(got, expected)
@@ -262,7 +262,8 @@ static void check_locate_extremal(const std::string& text,
     idx.build(text);
 
     const auto [got_min, got_max] = idx.locate_extremal(pattern);
-    const auto [exp_min, exp_max] = bf_locate_extremal(text, pattern, idx.phrases());
+    const auto phrases_bf = LZ77Parser().parse(text + '\0');
+    const auto [exp_min, exp_max] = bf_locate_extremal(text, pattern, phrases_bf);
 
     EXPECT_EQ(got_min, exp_min) << "pos_min  text=" << text << " pattern=" << pattern;
     EXPECT_EQ(got_max, exp_max) << "pos_max  text=" << text << " pattern=" << pattern;
@@ -542,8 +543,9 @@ TEST(LZ77Index_SpecialCorrectness, SpecialOnlyText) {
     LZ77Index idx;
     idx.build(text);
 
+    const auto phrases_bf = LZ77Parser().parse(text + '\0');
     // Brute-force: 1 primaria (end-aligned en p=1); p=4 es secundaria.
-    ASSERT_EQ(bf_primary_count(text, pattern, idx.phrases()), 1u)
+    ASSERT_EQ(bf_primary_count(text, pattern, phrases_bf), 1u)
         << "bf_primary_count inesperado";
 
     EXPECT_EQ(idx.count(pattern), 1u);
@@ -564,12 +566,13 @@ TEST(LZ77Index_SpecialCorrectness, NoDoubleCount) {
         SCOPED_TRACE("text=" + text);
         LZ77Index idx;
         idx.build(text);
+        const auto phrases_bf = LZ77Parser().parse(text + '\0');
 
         for (size_t plen = 2; plen <= std::min(text.size(), size_t(6)); ++plen) {
             for (size_t s = 0; s + plen <= text.size(); s += 3) {
                 const std::string p = text.substr(s, plen);
                 EXPECT_EQ(idx.count(p),
-                          bf_primary_count(text, p, idx.phrases()))
+                          bf_primary_count(text, p, phrases_bf))
                     << "plen=" << plen << " s=" << s;
             }
         }
@@ -605,6 +608,7 @@ TEST(LZ77Index_SpecialCorrectness, GroundTruth100Patterns) {
 
     LZ77Index idx;
     idx.build(text);
+    const auto phrases_bf = LZ77Parser().parse(text + '\0');
 
     std::mt19937 rng(42);
     int mismatches = 0;
@@ -615,7 +619,7 @@ TEST(LZ77Index_SpecialCorrectness, GroundTruth100Patterns) {
         const std::string p = text.substr(pos, plen);
 
         const size_t got = idx.count(p);
-        const size_t exp = bf_primary_count(text, p, idx.phrases());
+        const size_t exp = bf_primary_count(text, p, phrases_bf);
         if (got != exp) {
             ++mismatches;
             ADD_FAILURE()

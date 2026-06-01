@@ -14,8 +14,9 @@ set -e
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD="$REPO/build"
 DATA="$REPO/data"
-SR_DIR="$REPO/results/baseline_ecoli"
-PATTERNS="$DATA/patterns_ecoli_50.txt"
+SR_DIR="$DATA/sr_index_build"
+DATA_NAME="Escherichia_Coli"
+PATTERNS="$DATA/patterns_1000.txt"
 TEXT="$DATA/Escherichia_Coli"
 N=112689515   # tamaño de E. coli (bytes)
 
@@ -24,6 +25,7 @@ for f in "$TEXT" "$PATTERNS" "$BUILD/measure_index" "$BUILD/sr_locate"; do
     [[ -f "$f" ]] || { echo "ERROR: falta $f"; exit 1; }
 done
 [[ -d "$SR_DIR" ]] || { echo "ERROR: falta $SR_DIR (correr scripts/run_sr_index.sh primero)"; exit 1; }
+mkdir -p "$REPO/results/baseline_ecoli"
 
 N_PAT=$(wc -l < "$PATTERNS")
 echo "================================================================"
@@ -38,35 +40,40 @@ if [[ "$1" != "--skip-lz77" ]]; then
     echo ">>> LZ77-Index: construcción + bench locate (WmMinRmq)"
     echo "    (puede tardar ~8-15 min en 108 MB)"
     /usr/bin/time -v "$BUILD/measure_index" "$TEXT" --patterns="$PATTERNS" --variant=wm \
-        2> "$SR_DIR/lz77_time.txt"
+        2> "$REPO/results/baseline_ecoli/lz77_time.txt"
     echo ""
     echo "--- Pico de memoria LZ77 construction ---"
-    grep "Maximum resident" "$SR_DIR/lz77_time.txt" || true
+    grep "Maximum resident" "$REPO/results/baseline_ecoli/lz77_time.txt" || true
 fi
 
 # ── SR-Index (s=16): tamaño en disco ─────────────────────────────────────────
 echo ""
 echo ">>> SR-Index s=16: tamaño en disco"
 SR_SIZE=$(du -sb \
-    "$SR_DIR"/16_bwt_run_first_text_pos_by_last_Escherichia_Coli.txt.sdsl \
-    "$SR_DIR"/16_bwt_run_first_text_pos_sorted_to_last_idx_Escherichia_Coli.txt.sdsl \
-    "$SR_DIR"/16_bwt_run_first_text_pos_sorted_valid_area_Escherichia_Coli.txt.sdsl \
-    "$SR_DIR"/16_bwt_run_first_text_pos_sorted_valid_mark_Escherichia_Coli.txt.sdsl \
-    "$SR_DIR"/16_bwt_run_last_idx_Escherichia_Coli.txt.sdsl \
-    "$SR_DIR"/16_bwt_run_last_text_pos_Escherichia_Coli.txt.sdsl \
-    "$SR_DIR"/bwt_rle_Escherichia_Coli.txt.sdsl \
+    "$SR_DIR"/16_bwt_run_first_text_pos_by_last_${DATA_NAME}.sdsl \
+    "$SR_DIR"/16_bwt_run_first_text_pos_sorted_to_last_idx_${DATA_NAME}.sdsl \
+    "$SR_DIR"/16_bwt_run_first_text_pos_sorted_valid_area_${DATA_NAME}.sdsl \
+    "$SR_DIR"/16_bwt_run_first_text_pos_sorted_valid_mark_${DATA_NAME}.sdsl \
+    "$SR_DIR"/16_bwt_run_last_idx_${DATA_NAME}.sdsl \
+    "$SR_DIR"/16_bwt_run_last_text_pos_${DATA_NAME}.sdsl \
+    "$SR_DIR"/bwt_rle_${DATA_NAME}.sdsl \
     2>/dev/null | awk '{s+=$1} END {print s}')
 SR_MB=$(echo "scale=1; $SR_SIZE / 1048576" | bc)
 SR_BPC=$(echo "scale=3; $SR_SIZE * 8 / $N" | bc)
 echo "  SR-Index (s=16): ${SR_MB} MB  (${SR_BPC} bpc)"
 
-# ── SR-Index: velocidad locate ────────────────────────────────────────────────
+# ── SR-Index: velocidad locate + peak RSS ────────────────────────────────────
 echo ""
 echo ">>> SR-Index s=16: bench locate ($N_PAT patrones)"
+/usr/bin/time -v "$BUILD/sr_locate" \
+    --data_dir="$SR_DIR" \
+    --data_name="$DATA_NAME" \
+    --patterns="$PATTERNS" > /dev/null \
+    2> "$REPO/results/baseline_ecoli/sr_time.txt"
 T0=$(date +%s%N)
 "$BUILD/sr_locate" \
     --data_dir="$SR_DIR" \
-    --data_name="Escherichia_Coli.txt" \
+    --data_name="$DATA_NAME" \
     --patterns="$PATTERNS" > /dev/null
 T1=$(date +%s%N)
 TOTAL_MS=$(( (T1 - T0) / 1000000 ))
@@ -74,6 +81,8 @@ TOTAL_US=$(( (T1 - T0) / 1000 ))
 US_PER_QUERY=$(echo "scale=1; $TOTAL_US / $N_PAT" | bc)
 echo "  ${N_PAT} patrones: ${TOTAL_MS} ms total"
 echo "  Velocidad: ${US_PER_QUERY} µs/query"
+echo "--- Pico de memoria SR-Index ---"
+grep "Maximum resident" "$REPO/results/baseline_ecoli/sr_time.txt" || true
 
 echo ""
 echo "================================================================"

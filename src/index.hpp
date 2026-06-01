@@ -3,10 +3,11 @@
 #include "lz77/parser.hpp"
 #include "lz77/grid.hpp"
 
-#include <array>
+#include <bitset>
 #include <cstddef>
 #include <memory>
 #include <string>
+#include <filesystem>
 
 namespace lz77tax {
 
@@ -32,9 +33,21 @@ public:
      *
      * @param text  Texto sin centinela (e.g. ADN puro, sin '\0')
      */
-    void build(const std::string& text,
-               RmqVariant variant = RmqVariant::Wm);
+    void build(const std::string& text);
 
+
+    // ── Persistencia ──────────────────────────────────────────────────────────
+    /**
+     * Guarda el índice a disco en varios archivos con prefijo dado.
+     * Escribe: <prefix>.meta, <prefix>.grid, <prefix>.rcsa_fwd, <prefix>.rcsa_rev
+     */
+    void save(const std::filesystem::path& prefix) const;
+
+    /**
+     * Carga el índice desde los archivos generados por save().
+     * La instancia debe estar vacía (recién construida).
+     */
+    void load(const std::filesystem::path& prefix);
 
     // ── Query ─────────────────────────────────────────────────────────────────
     /**
@@ -85,13 +98,12 @@ public:
     /// Tamaño del texto indexado (incluyendo centinela '\0')
     size_t text_size()    const { return n_; }
 
-    /// Número de frases LZ77
-    size_t phrase_count() const { return phrases_.size(); }
+    /// Número de frases LZ77 (cacheado; phrases_ se libera tras build)
+    size_t phrase_count() const { return z_; }
 
     /// Número de puntos en la grilla (= z-1 para z frases)
     size_t grid_points()  const { return grid_.point_count(); }
 
-    const LZ77Parsing& phrases() const { return phrases_; }
     const Grid2D&      grid()    const { return grid_; }
     size_t csa_fwd_bytes()       const;
     size_t csa_rev_bytes()       const;
@@ -99,10 +111,10 @@ public:
 private:
     struct RCSAImpl;              // PIMPL: definido en index.cpp (r_csa.h solo allí)
 
-    LZ77Parsing                phrases_;
     Grid2D                     grid_;
     size_t                     n_ = 0;
-    std::array<bool, 256>      alphabet_{};  ///< chars presentes en el texto indexado
+    size_t                     z_ = 0;       ///< número de frases LZ77 (cacheado post-build)
+    std::bitset<256>           alphabet_{};  ///< chars presentes en el texto indexado
     std::unique_ptr<RCSAImpl>  rcsa_;
 };
 

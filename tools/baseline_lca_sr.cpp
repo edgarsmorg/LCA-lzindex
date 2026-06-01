@@ -28,6 +28,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <sys/resource.h>
 
 #include "baseline/sr_index_locator.hpp"
 
@@ -81,30 +82,29 @@ int main(int argc, char** argv) {
     std::cout << " " << std::fixed << std::setprecision(1) << load_s << "s\n";
 
     // ── Tamaño del índice ─────────────────────────────────────────────────────
-    // Estimamos sumando tamaños de los archivos sdsl relevantes en data_dir.
-    // (serialize() reconstruye todo el índice en un stream, lo cual es lento;
-    //  preferimos la suma de archivos para el benchmark.)
-    std::size_t idx_bytes = 0;
-    const std::string prefix = std::to_string(sr) + "_";
-    for (const auto& entry : fs::directory_iterator(data_dir)) {
-        const std::string fname = entry.path().filename().string();
-        // Incluir solo los archivos del sr con el data_name correcto
-        if (fname.find(data_name) != std::string::npos &&
-            (fname.rfind(prefix, 0) == 0 ||
-             fname.find("bwt_") == 0 ||
-             fname.find("alphabet") != std::string::npos)) {
-            idx_bytes += entry.file_size();
-        }
-    }
+    // size_in_bytes() serializa el índice en un ostringstream y cuenta los bytes:
+    // es el footprint real en disco, sin archivos de construcción intermedios.
+    std::cout << "Midiendo tamaño (serialize)..." << std::flush;
+    const std::size_t idx_bytes = sr_loc.size_in_bytes();
 
-    std::cout << "tamaño índice (archivos sdsl): "
-              << idx_bytes << " bytes";
-    if (idx_bytes > 0) {
-        // No conocemos n aquí — imprimimos solo bytes.
-        std::cout << " (" << std::fixed << std::setprecision(2)
-                  << idx_bytes / (1024.0 * 1024.0) << " MB)";
+    // n se obtiene del archivo de texto.
+    std::size_t n_text = 0;
+    {
+        std::error_code ec;
+        auto sz = fs::file_size(fs::path(data_dir).parent_path() / data_name, ec);
+        if (!ec) n_text = sz;
     }
-    std::cout << "\n";
+    const double bpc = (n_text > 0)
+        ? static_cast<double>(idx_bytes) * 8.0 / static_cast<double>(n_text)
+        : 0.0;
+
+    std::cout << " OK\n";
+    std::cout << std::fixed << std::setprecision(2);
+    std::cout << "tamaño índice (serialize)  : "
+              << idx_bytes << " bytes ("
+              << idx_bytes / (1024.0 * 1024.0) << " MB";
+    if (bpc > 0) std::cout << ", " << bpc << " bpc";
+    std::cout << ")\n";
 
     if (mode == "info") return 0;
 
@@ -146,6 +146,11 @@ int main(int argc, char** argv) {
 
     const double us_per_query = total_us / static_cast<double>(patterns.size());
 
+    // Peak RSS al finalizar el benchmark
+    struct rusage ru{};
+    getrusage(RUSAGE_SELF, &ru);
+    const long peak_kb = ru.ru_maxrss;  // en KB en Linux
+
     std::cout << "=== locate_extremal (sr-index, sr=" << sr << ") ===\n";
     std::cout << std::fixed << std::setprecision(2);
     std::cout << "  patrones con ocurrencias : " << hits    << "\n";
@@ -153,6 +158,9 @@ int main(int argc, char** argv) {
     std::cout << "  tiempo total             : "
               << total_us / 1e6 << " s\n";
     std::cout << "  µs/query                 : " << us_per_query << "\n";
+    std::cout << "  peak RSS                 : " << peak_kb << " KB ("
+              << std::fixed << std::setprecision(1)
+              << peak_kb / 1024.0 << " MB)\n";
 
     return 0;
 }

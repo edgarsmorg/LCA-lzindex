@@ -7,6 +7,8 @@
 #include <sdsl/construct.hpp>
 #include <sdsl/int_vector.hpp>
 #include <sdsl/bits.hpp>
+#include <sdsl/io.hpp>
+#include <sdsl/util.hpp>
 
 namespace lz77tax {
 
@@ -18,9 +20,7 @@ void Grid2D::build_from_coords(
         const std::vector<std::pair<size_t, size_t>>& coords,
         const std::vector<size_t>& boundaries,
         const std::vector<size_t>& phrase_lens,
-        size_t n,
-        RmqVariant variant) {
-    variant_ = variant;
+        size_t n) {
 
     const size_t z1 = coords.size();  // z-1 puntos
     assert(boundaries.size() == z1 && "coords y boundaries deben tener el mismo tamaño");
@@ -63,8 +63,7 @@ void Grid2D::build_from_coords(
 
     // text_pos_ compact: valores en [0, n-1], width = ceil(log2(n)) bits
     const uint8_t tp_w = n > 1 ? static_cast<uint8_t>(sdsl::bits::hi(n - 1) + 1) : 1;
-    text_pos_     = sdsl::int_vector<>(z1, 0, tp_w);
-    text_pos_inv_ = sdsl::int_vector<>(z1, 0, tp_w);
+    text_pos_ = sdsl::int_vector<>(z1, 0, tp_w);
 
     // phrase_total_len_ usa su propio ancho: max_phrase_len << n en textos repetitivos
     const size_t max_pl = *std::max_element(phrase_lens.begin(), phrase_lens.end());
@@ -82,25 +81,19 @@ void Grid2D::build_from_coords(
         assert(y_rel < z1 && "y_rel fuera de rango");
         R[j]                 = y_rel;
         text_pos_[j]         = boundaries[k];
-        text_pos_inv_[j]     = (n - 1) - boundaries[k];
         phrase_total_len_[j] = phrase_lens[k];
     }
 
     // ── 4. Construir wt_int sobre R ───────────────────────────────────────────
     sdsl::construct_im(wt_, R);
 
-    // ── 5. Construir RMQ según variant ───────────────────────────────────────
+    // ── 5. Construir RMQ (WmMinRmq/WmMaxRmq) ─────────────────────────────────
     {
         std::vector<size_t> ys(z1);
         for (size_t j = 0; j < z1; ++j)
             ys[j] = static_cast<size_t>(R[j]);
-        if (variant == RmqVariant::Wt) {
-            wt_min_rmq_.build(ys, text_pos_,     z1);
-            wt_max_rmq_.build(ys, text_pos_inv_, z1);
-        } else {
-            wm_min_rmq_.build(ys, text_pos_,     z1);
-            wm_max_rmq_.build(ys, text_pos_inv_, z1);
-        }
+        wm_min_rmq_.build(ys, text_pos_, z1);
+        wm_max_rmq_.build(ys, text_pos_, z1);
     }
 }
 
@@ -108,8 +101,7 @@ void Grid2D::build_from_coords(
 // build() desde texto crudo (small-scale / tests)
 // ─────────────────────────────────────────────────────────────────────────────
 
-void Grid2D::build(const LZ77Parsing& phrases, const std::string& text,
-                   RmqVariant variant) {
+void Grid2D::build(const LZ77Parsing& phrases, const std::string& text) {
     const size_t n = text.size();
     const size_t z = phrases.size();
 
@@ -171,7 +163,7 @@ void Grid2D::build(const LZ77Parsing& phrases, const std::string& text,
         phrase_lens[k] = phrases[k].length + 1; // total length including trailing char
     }
 
-    build_from_coords(coords, boundaries, phrase_lens, n, variant);
+    build_from_coords(coords, boundaries, phrase_lens, n);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -181,8 +173,7 @@ void Grid2D::build(const LZ77Parsing& phrases, const std::string& text,
 void Grid2D::build(const LZ77Parsing& phrases,
                    const sdsl::int_vector<>& isa_fwd,
                    const sdsl::int_vector<>& isa_rev,
-                   size_t n,
-                   RmqVariant variant) {
+                   size_t n) {
     const size_t z = phrases.size();
 
     if (z <= 1) return;
@@ -199,7 +190,7 @@ void Grid2D::build(const LZ77Parsing& phrases,
         phrase_lens[k] = phrases[k].length + 1;
     }
 
-    build_from_coords(coords, boundaries, phrase_lens, n, variant);
+    build_from_coords(coords, boundaries, phrase_lens, n);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -271,17 +262,10 @@ Grid2D::MinResult Grid2D::query_min_2d(size_t sp_right, size_t ep_right,
     const size_t vrb = rank_rev_(ep_left + 1);
     if (vrb == 0 || vlb >= vrb) return {0, SIZE_MAX};
 
-    if (variant_ == RmqVariant::Wt) {
-        if (wt_min_rmq_.size() == 0) return {0, SIZE_MAX};
-        const auto r = wt_min_rmq_.range_argmin_2d(lb, rb - 1, vlb, vrb - 1, text_pos_);
-        if (r.count == 0) return {0, SIZE_MAX};
-        return {r.count, static_cast<size_t>(text_pos_[r.argmin_global])};
-    } else {
-        if (wm_min_rmq_.size() == 0) return {0, SIZE_MAX};
-        const auto r = wm_min_rmq_.range_argmin_2d(lb, rb - 1, vlb, vrb - 1, text_pos_);
-        if (r.count == 0) return {0, SIZE_MAX};
-        return {r.count, static_cast<size_t>(text_pos_[r.argmin_global])};
-    }
+    if (wm_min_rmq_.size() == 0) return {0, SIZE_MAX};
+    const auto r = wm_min_rmq_.range_argmin_2d(lb, rb - 1, vlb, vrb - 1, text_pos_);
+    if (r.count == 0) return {0, SIZE_MAX};
+    return {r.count, static_cast<size_t>(text_pos_[r.argmin_global])};
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -338,18 +322,57 @@ Grid2D::MaxResult Grid2D::query_max_2d(size_t sp_right, size_t ep_right,
     const size_t vrb = rank_rev_(ep_left + 1);
     if (vrb == 0 || vlb >= vrb) return {0, 0};
 
-    // argmin de text_pos_inv_ = argmax de text_pos_
-    if (variant_ == RmqVariant::Wt) {
-        if (wt_max_rmq_.size() == 0) return {0, 0};
-        const auto r = wt_max_rmq_.range_argmin_2d(lb, rb - 1, vlb, vrb - 1, text_pos_inv_);
-        if (r.count == 0) return {0, 0};
-        return {r.count, static_cast<size_t>(text_pos_[r.argmin_global])};
-    } else {
-        if (wm_max_rmq_.size() == 0) return {0, 0};
-        const auto r = wm_max_rmq_.range_argmin_2d(lb, rb - 1, vlb, vrb - 1, text_pos_inv_);
-        if (r.count == 0) return {0, 0};
-        return {r.count, static_cast<size_t>(text_pos_[r.argmin_global])};
-    }
+    if (wm_max_rmq_.size() == 0) return {0, 0};
+    const auto r = wm_max_rmq_.range_argmin_2d(lb, rb - 1, vlb, vrb - 1, text_pos_);
+    if (r.count == 0) return {0, 0};
+    return {r.count, static_cast<size_t>(text_pos_[r.argmin_global])};
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// size_breakdown()
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Serialización
+// ─────────────────────────────────────────────────────────────────────────────
+
+size_t Grid2D::serialize(std::ostream& out) const {
+    size_t written = 0;
+    written += sdsl::serialize(wt_,              out);
+    written += sdsl::serialize(bv_fwd_,          out);
+    written += sdsl::serialize(bv_rev_,          out);
+    written += sdsl::serialize(text_pos_,        out);
+    written += sdsl::serialize(phrase_total_len_,out);
+    written += wm_min_rmq_.serialize(out);
+    written += wm_max_rmq_.serialize(out);
+    return written;
+}
+
+void Grid2D::load(std::istream& in) {
+    sdsl::load(wt_,               in);
+    sdsl::load(bv_fwd_,           in);
+    sdsl::load(bv_rev_,           in);
+    sdsl::load(text_pos_,         in);
+    sdsl::load(phrase_total_len_, in);
+    wm_min_rmq_.load(in);
+    wm_max_rmq_.load(in);
+    // rank_fwd_ y rank_rev_ guardan puntero a bv_*_: reconstruir tras cargar.
+    sdsl::util::init_support(rank_fwd_, &bv_fwd_);
+    sdsl::util::init_support(rank_rev_, &bv_rev_);
+}
+
+Grid2D::SizeBreakdown Grid2D::size_breakdown() const {
+    SizeBreakdown bd{};
+    bd.wt              = sdsl::size_in_bytes(wt_);
+    bd.bv_fwd          = sdsl::size_in_bytes(bv_fwd_);
+    bd.bv_rev          = sdsl::size_in_bytes(bv_rev_);
+    bd.rank_fwd        = sdsl::size_in_bytes(rank_fwd_);
+    bd.rank_rev        = sdsl::size_in_bytes(rank_rev_);
+    bd.text_pos        = sdsl::size_in_bytes(text_pos_);
+    bd.phrase_total_len= sdsl::size_in_bytes(phrase_total_len_);
+    bd.wm_min_rmq      = wm_min_rmq_.size_in_bytes();
+    bd.wm_max_rmq      = wm_max_rmq_.size_in_bytes();
+    return bd;
 }
 
 }  // namespace lz77tax

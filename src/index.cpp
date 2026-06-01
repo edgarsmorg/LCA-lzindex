@@ -37,8 +37,6 @@ class CountOnlyRCSA : public sri::RCSA<> {
     using Base    = sri::RCSA<>;
     using StrType = typename Alphabet::string_type;
  public:
-    // serialize es public en la base: override debe también ser public para que
-    // sdsl::has_serialize lo detecte y rcsa_bytes() lo pueda llamar externamente.
     size_type serialize(std::ostream& out, sdsl::structure_tree_node* v,
                         const std::string& name) const override {
         auto child = sdsl::structure_tree::add_child(v, name, "CountOnlyRCSA");
@@ -137,13 +135,14 @@ std::filesystem::path make_tmp_dir(const std::string& prefix) {
 // build() — versión desde texto en memoria (small-scale y benchmark)
 // ─────────────────────────────────────────────────────────────────────────────
 
-void LZ77Index::build(const std::string& text, RmqVariant variant) {
+void LZ77Index::build(const std::string& text) {
     const std::string text_s = text + '\0';
     n_ = text_s.size();
-    phrases_ = LZ77Parser().parse(text_s);
+    LZ77Parsing phrases = LZ77Parser().parse(text_s);
+    z_ = phrases.size();
 
-    alphabet_.fill(false);
-    for (unsigned char c : text) alphabet_[c] = true;
+    alphabet_.reset();
+    for (unsigned char c : text) alphabet_.set(c);
 
     rcsa_ = std::make_unique<RCSAImpl>();
 
@@ -163,7 +162,10 @@ void LZ77Index::build(const std::string& text, RmqVariant variant) {
     std::filesystem::remove(path_rev);
     std::filesystem::remove_all(tmp_rev);
 
-    grid_.build(phrases_, isa_fwd, isa_rev, n_, variant);
+    grid_.build(phrases, isa_fwd, isa_rev, n_);
+
+    // Liberar la RAM del vector de frases: Grid2D ya extrajo todo lo que necesita.
+    phrases = LZ77Parsing{};
 }
 
 namespace {
@@ -187,6 +189,90 @@ size_t LZ77Index::csa_rev_bytes() const {
     return rcsa_ ? rcsa_bytes(rcsa_->rev) : 0;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// save() / load()
+// ─────────────────────────────────────────────────────────────────────────────
+
+namespace {
+// bitset<256> no tiene to_ullong() directo: serializa/deserializa como 4×uint64.
+void write_bitset256(std::ostream& out, const std::bitset<256>& bs) {
+    for (int w = 0; w < 4; ++w) {
+        uint64_t word = 0;
+        for (int b = 0; b < 64; ++b)
+            if (bs[w * 64 + b]) word |= (1ULL << b);
+        out.write(reinterpret_cast<const char*>(&word), sizeof(word));
+    }
+}
+
+void read_bitset256(std::istream& in, std::bitset<256>& bs) {
+    bs.reset();
+    for (int w = 0; w < 4; ++w) {
+        uint64_t word = 0;
+        in.read(reinterpret_cast<char*>(&word), sizeof(word));
+        for (int b = 0; b < 64; ++b)
+            if (word & (1ULL << b)) bs.set(w * 64 + b);
+    }
+}
+}  // namespace (extended)
+
+void LZ77Index::save(const std::filesystem::path& prefix) const {
+    // 1. Meta: n_, z_, alphabet_
+    {
+        std::ofstream f(std::filesystem::path(prefix).replace_extension(".meta"),
+                        std::ios::binary);
+        sdsl::write_member(n_, f);
+        sdsl::write_member(z_, f);
+        write_bitset256(f, alphabet_);
+    }
+    // 2. Grid
+    {
+        std::ofstream f(std::filesystem::path(prefix).replace_extension(".grid"),
+                        std::ios::binary);
+        grid_.serialize(f);
+    }
+    // 3. RCSAs: usar serialize() existente (escribe Alphabet + PsiRLE en orden)
+    if (rcsa_) {
+        {
+            std::ofstream f(std::filesystem::path(prefix).replace_extension(".rcsa_fwd"),
+                            std::ios::binary);
+            rcsa_->fwd.serialize(f, nullptr, "");
+        }
+        {
+            std::ofstream f(std::filesystem::path(prefix).replace_extension(".rcsa_rev"),
+                            std::ios::binary);
+            rcsa_->rev.serialize(f, nullptr, "");
+        }
+    }
+}
+
+void LZ77Index::load(const std::filesystem::path& prefix) {
+    // 1. Meta
+    {
+        std::ifstream f(std::filesystem::path(prefix).replace_extension(".meta"),
+                        std::ios::binary);
+        sdsl::read_member(n_, f);
+        sdsl::read_member(z_, f);
+        read_bitset256(f, alphabet_);
+    }
+    // 2. Grid
+    {
+        std::ifstream f(std::filesystem::path(prefix).replace_extension(".grid"),
+                        std::ios::binary);
+        grid_.load(f);
+    }
+    // 3. RCSAs: load(istream&) hereda de RCSA<> y llama setupKeyNames+loadAllItems+constructIndex
+    rcsa_ = std::make_unique<RCSAImpl>();
+    {
+        std::ifstream f(std::filesystem::path(prefix).replace_extension(".rcsa_fwd"),
+                        std::ios::binary);
+        rcsa_->fwd.load(f);
+    }
+    {
+        std::ifstream f(std::filesystem::path(prefix).replace_extension(".rcsa_rev"),
+                        std::ios::binary);
+        rcsa_->rev.load(f);
+    }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // count()
@@ -205,9 +291,9 @@ bool rcsa_search(const CountOnlyRCSA& rcsa, const std::string& sub,
 }
 
 // Retorna true si todos los chars de s están en el alfabeto indexado.
-bool in_alphabet(const std::string& s, const std::array<bool, 256>& alpha) {
+bool in_alphabet(const std::string& s, const std::bitset<256>& alpha) {
     for (unsigned char c : s)
-        if (!alpha[c]) return false;
+        if (!alpha.test(c)) return false;
     return true;
 }
 }  // namespace
