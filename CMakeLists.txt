@@ -178,6 +178,28 @@ target_include_directories(measure_index PRIVATE ${CMAKE_SOURCE_DIR}/src ${SDSL_
 target_compile_options(measure_index PRIVATE -O3)
 message(STATUS "measure_index: habilitado")
 
+# ── build_lz_index / inspect_lz_index: herramientas benchmark LZ77 ───────────
+add_executable(build_lz_index tools/build_lz_index.cpp
+    src/index.cpp
+    src/lz77/parser.cpp
+    src/lz77/grid.cpp
+    src/wavelet/wt_rmq_min.cpp
+    src/wavelet/wm_rmq_min.cpp
+)
+target_include_directories(build_lz_index PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/tools ${SDSL_INCLUDE})
+target_compile_options(build_lz_index PRIVATE -O3)
+
+add_executable(inspect_lz_index tools/inspect_lz_index.cpp
+    src/index.cpp
+    src/lz77/parser.cpp
+    src/lz77/grid.cpp
+    src/wavelet/wt_rmq_min.cpp
+    src/wavelet/wm_rmq_min.cpp
+)
+target_include_directories(inspect_lz_index PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/tools ${SDSL_INCLUDE})
+target_compile_options(inspect_lz_index PRIVATE -O3)
+message(STATUS "build_lz_index/inspect_lz_index: habilitados")
+
 # ── sr_index_locator: objeto PIMPL que aísla los headers del sr-index ─────────
 # Se compila UNA sola vez y se reutiliza en baseline_lca_sr y test_baseline_sr,
 # evitando múltiples definiciones de símbolos de sr-index al linkar con index.cpp.
@@ -291,6 +313,57 @@ if(EXISTS ${SR_INDEX_DIR}/include AND EXISTS ${SDSL_INCLUDE}/sdsl)
     message(STATUS "compare_classifiers: habilitado")
 else()
     message(STATUS "compare_classifiers: deshabilitado (sdsl o sr-index no encontrado)")
+endif()
+
+# ── Microbench tools SR/LZ77 ─────────────────────────────────────────────────
+if(EXISTS ${SR_INDEX_DIR}/include AND EXISTS ${SDSL_INCLUDE}/sdsl)
+    add_executable(build_sr_index
+        tools/build_sr_index.cpp
+        $<TARGET_OBJECTS:sr_index_locator_obj>
+    )
+    target_include_directories(build_sr_index PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/tools
+        ${SR_INDEX_DIR}/include
+        ${SDSL_INCLUDE}
+        ${SR_BUILD_DIR}/_deps/json-src/single_include
+    )
+    target_compile_options(build_sr_index PRIVATE -O3)
+
+    add_executable(inspect_sr_index
+        tools/inspect_sr_index.cpp
+        $<TARGET_OBJECTS:sr_index_locator_obj>
+    )
+    target_include_directories(inspect_sr_index PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/tools
+        ${SR_INDEX_DIR}/include
+        ${SDSL_INCLUDE}
+        ${SR_BUILD_DIR}/_deps/json-src/single_include
+    )
+    target_compile_options(inspect_sr_index PRIVATE -O3)
+
+    add_executable(bench_locate_compare
+        tools/bench_locate_compare.cpp
+        src/index.cpp
+        src/lz77/parser.cpp
+        src/lz77/grid.cpp
+        src/wavelet/wt_rmq_min.cpp
+        src/wavelet/wm_rmq_min.cpp
+        $<TARGET_OBJECTS:sr_index_locator_obj>
+    )
+    target_include_directories(bench_locate_compare PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/tools
+        ${SR_INDEX_DIR}/include
+        ${SDSL_INCLUDE}
+        ${SR_BUILD_DIR}/_deps/json-src/single_include
+    )
+    target_link_libraries(bench_locate_compare PRIVATE -Wl,--allow-multiple-definition)
+    target_compile_options(bench_locate_compare PRIVATE -O3)
+    message(STATUS "microbench SR/LZ77 tools: habilitadas")
+else()
+    message(STATUS "microbench SR/LZ77 tools: deshabilitadas (sdsl o sr-index no encontrado)")
 endif()
 
 # Directorios de tests y benchmarks (a agregar después)

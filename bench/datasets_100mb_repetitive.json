@@ -1,0 +1,37 @@
+{
+  "_notes": [
+    "Datasets de 100 MiB para experimentos largos de alta repetitividad.",
+    "Generar con: scripts/gen_bench_datasets.py --manifest bench/datasets_100mb_repetitive.json --out data/bench_100mb_repetitive"
+  ],
+  "datasets": [
+    {
+      "name": "rep100mb_periodic_short_unit",
+      "type": "periodic",
+      "size_bytes": 104857600,
+      "unit": "ACGTACGTGATTACA",
+      "seed": 101,
+      "pattern_count": 10000,
+      "pattern_len": 32
+    },
+    {
+      "name": "rep100mb_mutated_copies_0p1pct",
+      "type": "mutated_copies",
+      "genome_len": 1048576,
+      "copies": 100,
+      "mutation_rate": 0.001,
+      "seed": 102,
+      "pattern_count": 10000,
+      "pattern_len": 32
+    },
+    {
+      "name": "rep100mb_mutated_copies_1pct",
+      "type": "mutated_copies",
+      "genome_len": 1048576,
+      "copies": 100,
+      "mutation_rate": 0.01,
+      "seed": 103,
+      "pattern_count": 10000,
+      "pattern_len": 32
+    }
+  ]
+}

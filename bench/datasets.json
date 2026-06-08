@@ -1,0 +1,47 @@
+{
+  "_notes": [
+    "Small defaults are intended for smoke tests and quick local iteration.",
+    "For long experiments, clone an entry and scale size_bytes, genome_len, copies, and pattern_count."
+  ],
+  "datasets": [
+    {
+      "name": "tiny_random_dna",
+      "type": "random",
+      "size_bytes": 4096,
+      "seed": 11,
+      "pattern_count": 100,
+      "pattern_len": 16
+    },
+    {
+      "name": "tiny_periodic_dna",
+      "type": "periodic",
+      "size_bytes": 4096,
+      "unit": "ACGTACGTGATTACA",
+      "seed": 12,
+      "pattern_count": 100,
+      "pattern_len": 16
+    },
+    {
+      "name": "small_mutated_copies",
+      "type": "mutated_copies",
+      "genome_len": 2048,
+      "copies": 4,
+      "mutation_rate": 0.02,
+      "seed": 13,
+      "pattern_count": 120,
+      "pattern_len": 20
+    }
+  ],
+  "large_scale_templates": [
+    {
+      "name": "large_mutated_copies_example",
+      "type": "mutated_copies",
+      "genome_len": 1000000,
+      "copies": 50,
+      "mutation_rate": 0.01,
+      "seed": 101,
+      "pattern_count": 10000,
+      "pattern_len": 32
+    }
+  ]
+}

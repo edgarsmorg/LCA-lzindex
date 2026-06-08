@@ -1,0 +1,59 @@
+{
+  "_notes": [
+    "Barrido de 100 MiB para copias mutadas con tasas entre 1% y 0.01%.",
+    "Cada dataset tiene 100 copias de un genoma ancestral de 1 MiB.",
+    "Generar con: scripts/gen_bench_datasets.py --manifest bench/datasets_100mb_mutation_sweep.json --out data/bench_100mb_mutation_sweep"
+  ],
+  "datasets": [
+    {
+      "name": "rep100mb_mutated_copies_1pct",
+      "type": "mutated_copies",
+      "genome_len": 1048576,
+      "copies": 100,
+      "mutation_rate": 0.01,
+      "seed": 301,
+      "pattern_count": 10000,
+      "pattern_len": 32
+    },
+    {
+      "name": "rep100mb_mutated_copies_0p5pct",
+      "type": "mutated_copies",
+      "genome_len": 1048576,
+      "copies": 100,
+      "mutation_rate": 0.005,
+      "seed": 302,
+      "pattern_count": 10000,
+      "pattern_len": 32
+    },
+    {
+      "name": "rep100mb_mutated_copies_0p1pct",
+      "type": "mutated_copies",
+      "genome_len": 1048576,
+      "copies": 100,
+      "mutation_rate": 0.001,
+      "seed": 303,
+      "pattern_count": 10000,
+      "pattern_len": 32
+    },
+    {
+      "name": "rep100mb_mutated_copies_0p05pct",
+      "type": "mutated_copies",
+      "genome_len": 1048576,
+      "copies": 100,
+      "mutation_rate": 0.0005,
+      "seed": 304,
+      "pattern_count": 10000,
+      "pattern_len": 32
+    },
+    {
+      "name": "rep100mb_mutated_copies_0p01pct",
+      "type": "mutated_copies",
+      "genome_len": 1048576,
+      "copies": 100,
+      "mutation_rate": 0.0001,
+      "seed": 305,
+      "pattern_count": 10000,
+      "pattern_len": 32
+    }
+  ]
+}

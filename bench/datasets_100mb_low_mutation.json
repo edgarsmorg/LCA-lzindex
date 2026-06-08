@@ -1,0 +1,48 @@
+{
+  "_notes": [
+    "Datasets de 100 MiB con copias mutadas y tasas menores o iguales a 0.1%.",
+    "Generar con: scripts/gen_bench_datasets.py --manifest bench/datasets_100mb_low_mutation.json --out data/bench_100mb_low_mutation"
+  ],
+  "datasets": [
+    {
+      "name": "rep100mb_mutated_copies_0pct",
+      "type": "mutated_copies",
+      "genome_len": 1048576,
+      "copies": 100,
+      "mutation_rate": 0.0,
+      "seed": 201,
+      "pattern_count": 10000,
+      "pattern_len": 32
+    },
+    {
+      "name": "rep100mb_mutated_copies_0p01pct",
+      "type": "mutated_copies",
+      "genome_len": 1048576,
+      "copies": 100,
+      "mutation_rate": 0.0001,
+      "seed": 202,
+      "pattern_count": 10000,
+      "pattern_len": 32
+    },
+    {
+      "name": "rep100mb_mutated_copies_0p05pct",
+      "type": "mutated_copies",
+      "genome_len": 1048576,
+      "copies": 100,
+      "mutation_rate": 0.0005,
+      "seed": 203,
+      "pattern_count": 10000,
+      "pattern_len": 32
+    },
+    {
+      "name": "rep100mb_mutated_copies_0p1pct",
+      "type": "mutated_copies",
+      "genome_len": 1048576,
+      "copies": 100,
+      "mutation_rate": 0.001,
+      "seed": 204,
+      "pattern_count": 10000,
+      "pattern_len": 32
+    }
+  ]
+}
