@@ -23,7 +23,7 @@ namespace lz77tax {
  * y la frase k+1:
  *   X_k = ISA[ start_{k+1} ]       rank en SA forward  de T[start_{k+1}..n-1]
  *   Y_k = ISA_rev[ n-2 - end_k ]   rank en rev-SA de T^R[n-2-end_k..n-1]
- *   donde end_k = start_{k+1} - 1 = posición del next_char de la frase k
+ *   donde end_k = start_{k+1} - 1 = posicion del next_char de la frase k
  *
  * Internamente se almacena como:
  *   wt_    : wt_int<> sobre R[0..z-2] donde R[rank_fwd(X_k)] = rank_rev(Y_k)
@@ -34,42 +34,41 @@ namespace lz77tax {
  * [rank(sp), rank(ep+1)-1] sobre el wt_, sin materializar SA ni ISA completos
  * en la consulta.
  *
- * ESCALA: la interfaz de producción recibe csa_wt (FM-index ya construido por
+ * ESCALA: la interfaz de produccion recibe csa_wt (FM-index ya construido por
  * ropebwt3) y resuelve cada ISA[i] en O(t_psi) sin materializar el array entero.
  * La interfaz de test acepta el texto crudo y construye el SA en RAM (solo para
- * textos pequeños, <= ~500 MB).
+ * textos pequenos, <= ~500 MB).
  */
 class Grid2D {
 public:
-    // ── Interfaz de producción (GB+) ─────────────────────────────────────────
+    // Interfaz de produccion (GB+)
     /**
      * Construye la grilla usando arrays ISA materializados.
-     * Llamada por LZ77Index::build() después de sri::construct + sdsl::construct_isa.
-     * Los arrays ISA se liberan por el llamador inmediatamente después.
+     * Llamada por LZ77Index::build() despues de sri::construct + sdsl::construct_isa.
+     * Los arrays ISA se liberan por el llamador inmediatamente despues.
      *
      * @param phrases   Parsing LZ77 del texto (z frases)
-     * @param isa_fwd   ISA del texto forward (SA⁻¹ de T)
-     * @param isa_rev   ISA del texto reverso (SA⁻¹ de T^R)
-     * @param n         Tamaño del texto con centinela
+     * @param isa_fwd   ISA del texto forward (SA de T)
+     * @param isa_rev   ISA del texto reverso (SA de T^R)
+     * @param n         Tamanio del texto con centinela
      */
     void build(const LZ77Parsing& phrases,
                const sdsl::int_vector<>& isa_fwd,
                const sdsl::int_vector<>& isa_rev,
                size_t n);
 
-    // ── Interfaz de test / small-scale (≤ ~500 MB) ───────────────────────────
+    // Interfaz de test / small-scale
     /**
      * Construye la grilla desde el texto crudo.
-     * Construye SA + ISA + SA_rev + ISA_rev en RAM (~5x texto) — solo para tests.
+     * Construye SA + ISA + SA_rev + ISA_rev en RAM (~5x texto) -- solo para tests.
      *
      * @param phrases     Parsing LZ77 del texto
-     * @param text        Texto original (debe terminar con el carácter más pequeño,
+     * @param text        Texto original (debe terminar con el caracter mas pequeno,
      *                    e.g. '\0' o '$', para que el SA sea correcto)
-     * @param variant     Qué estructura RMQ construir (por defecto Wm)
      */
     void build(const LZ77Parsing& phrases, const std::string& text);
 
-    // ── Consultas ─────────────────────────────────────────────────────────────
+    // Consultas
     /**
      * Consulta rectangular en la grilla usando rangos BWT globales.
      *
@@ -78,10 +77,9 @@ public:
      *   [sp_left,  ep_left]  = backward_search(csa_rev,  reverse(P[0..i-1]))
      *
      * Retorna {count, vector<{wt_idx, y_rel}>}.
-     * sdsl::range_search_2d (wt_int.hpp línea 717: emplace_back(i-1, path)) devuelve
-     * pares {position, value}:
-     *   position = wt_idx = rank_fwd_(X_k)  (índice original en el array R)
-     *   value    = y_rel  = rank_rev_(Y_k)   (valor almacenado en R[wt_idx])
+     * sdsl::range_search_2d devuelve pares {position, value}:
+     *   position = wt_idx = rank_fwd_(X_k)
+     *   value    = y_rel  = rank_rev_(Y_k)
      */
     using RangeResult = std::pair<
         size_t,
@@ -92,48 +90,31 @@ public:
                       size_t sp_left,  size_t ep_left) const;
 
     /**
-     * Consulta extremal: igual que query() pero devuelve solo el mínimo y máximo
-     * de start_{k+1} (posición del boundary en el texto) entre los puntos hallados.
+     * Consulta extremal minima usando WmMinRmq (O(log^2 z), sin enumerar puntos).
      *
-     * Complejidad: O(occ · log z) — enumera puntos y hace lookup en text_pos_.
-     * Para clasificación taxonómica: la posición real de la ocurrencia del patrón
-     * es boundary - split_i, que el llamador (LZ77Index) computa externamente.
-     */
-    struct ExtremalResult {
-        size_t count;        ///< Número de puntos encontrados en el rectángulo
-        size_t boundary_min; ///< Mínimo start_{k+1} entre los puntos; SIZE_MAX si count=0
-        size_t boundary_max; ///< Máximo start_{k+1} entre los puntos; 0 si count=0
-    };
-
-    ExtremalResult query_extremal(size_t sp_right, size_t ep_right,
-                                  size_t sp_left,  size_t ep_left) const;
-
-    /**
-     * Consulta extremal mínima usando WtMinRmq (O(log² z), sin enumerar puntos).
-     *
-     * Retorna {count, boundary_min} donde boundary_min = start_{k+1} mínimo
+     * Retorna {count, boundary_min} donde boundary_min = start_{k+1} minimo
      * entre los puntos hallados. Si count==0, boundary_min = SIZE_MAX.
      */
     struct MinResult {
-        size_t count;        ///< 0 si rectángulo vacío
-        size_t boundary_min; ///< mínimo start_{k+1}; SIZE_MAX si count==0
+        size_t count;        ///< 0 si rectangulo vacio
+        size_t boundary_min; ///< minimo start_{k+1}; SIZE_MAX si count==0
     };
 
     MinResult query_min_2d(size_t sp_right, size_t ep_right,
                            size_t sp_left,  size_t ep_left) const;
 
     /**
-     * Consulta extremal máxima usando WtMinRmq sobre valores invertidos (O(log² z)).
+     * Consulta extremal maxima usando WmMaxRmq (O(log^2 z), sin enumerar puntos).
      *
-     * Retorna {count, boundary_max} donde boundary_max = start_{k+1} máximo
+     * Retorna {count, boundary_max} donde boundary_max = start_{k+1} maximo
      * entre los puntos hallados. Si count==0, boundary_max = 0.
      *
-     * Internamente usa wt_max_rmq_ / wm_max_rmq_ (RMQ<false>) sobre text_pos_
+     * Internamente usa wm_max_rmq_ (RMQ<false>) sobre text_pos_
      * directamente: argmax sin necesidad de invertir valores.
      */
     struct MaxResult {
-        size_t count;        ///< 0 si rectángulo vacío
-        size_t boundary_max; ///< máximo start_{k+1}; 0 si count==0
+        size_t count;        ///< 0 si rectangulo vacio
+        size_t boundary_max; ///< maximo start_{k+1}; 0 si count==0
     };
 
     MaxResult query_max_2d(size_t sp_right, size_t ep_right,
@@ -141,7 +122,7 @@ public:
 
     /**
      * Consulta especial para patrones end-aligned.
-     * Retorna ocurrencias donde el patrón termina exactamente al final de la frase k,
+     * Retorna ocurrencias donde el patron termina exactamente al final de la frase k,
      * siempre y cuando quepa en la frase (phrase_total_len_ >= plen).
      */
     struct SpecialResult {
@@ -152,8 +133,8 @@ public:
 
     SpecialResult query_special(size_t sp_rev, size_t ep_rev, size_t plen) const;
 
-    // ── Accesores ─────────────────────────────────────────────────────────────
-    /// Número de puntos en la grilla (= z-1 para z frases)
+    // Accesores
+    /// Numero de puntos en la grilla (= z-1 para z frases)
     size_t point_count() const { return wt_.size(); }
 
     const sdsl::wt_int<>&    wt()         const { return wt_; }
@@ -161,7 +142,7 @@ public:
     const sdsl::sd_vector<>& bv_rev()    const { return bv_rev_; }
     const WmMinRmq&          wm_min_rmq()  const { return wm_min_rmq_; }
     const WmMaxRmq&          wm_max_rmq()  const { return wm_max_rmq_; }
-    /// Posición en el texto del boundary k+1 para el punto con índice WT wt_idx.
+    /// Posicion en el texto del boundary k+1 para el punto con indice WT wt_idx.
     size_t text_pos(size_t wt_idx) const { return text_pos_[wt_idx]; }
 
     struct SizeBreakdown {
@@ -175,12 +156,12 @@ public:
     };
     SizeBreakdown size_breakdown() const;
 
-    // ── Serialización ─────────────────────────────────────────────────────────
+    // Serializacion
     size_t serialize(std::ostream& out) const;
     void   load(std::istream& in);
 
     // rank_fwd_/rank_rev_ guardan punteros raw a bv_fwd_/bv_rev_: no es seguro
-    // copiar ni mover Grid2D con los constructores implícitos. Prohibimos copia;
+    // copiar ni mover Grid2D con los constructores implicitos. Prohibimos copia;
     // si en el futuro se necesita mover, implementar con sdsl::util::init_support.
     Grid2D() = default;
     Grid2D(const Grid2D&) = delete;
@@ -201,6 +182,13 @@ private:
                            const std::vector<size_t>& boundaries,
                            const std::vector<size_t>& phrase_lens,
                            size_t n);
+
+    // Convierte rangos BWT globales [sp_r,ep_r] x [sp_l,ep_l] a rangos relativos
+    // [lb, rb-1] x [vlb, vrb-1] sobre wt_. Devuelve false si el rectangulo es vacio.
+    bool clamp_ranges(size_t sp_r, size_t ep_r,
+                      size_t sp_l, size_t ep_l,
+                      size_t& lb, size_t& rb,
+                      size_t& vlb, size_t& vrb) const;
 };
 
 }  // namespace lz77tax

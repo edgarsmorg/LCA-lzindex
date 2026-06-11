@@ -297,127 +297,8 @@ TEST(Grid2D_Query, AllSameChar) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Tests de query_extremal: brute-force vs query_extremal()
+// Tests de text_pos: invariante de consistencia
 // ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Brute-force para extremal: recorre todas las ocurrencias del patrón, verifica
- * cuáles cruzan al menos un boundary de frase, y devuelve el boundary_min y
- * boundary_max (= start_{k+1}) entre los cruces encontrados para el split dado.
- */
-static std::pair<size_t, size_t> brute_force_extremal_boundaries(
-        const std::string& text_raw,
-        const std::string& pattern,
-        const LZ77Parsing& phrases) {
-    const size_t m = pattern.size();
-    size_t bmin = SIZE_MAX, bmax = 0;
-
-    for (size_t p = 0; p + m <= text_raw.size(); ++p) {
-        if (text_raw.compare(p, m, pattern) != 0) continue;
-        for (size_t k = 0; k + 1 < phrases.size(); ++k) {
-            const size_t b = phrases[k + 1].start_pos;
-            if (b >= text_raw.size()) continue;  // boundary de centinela
-            if (p < b && b <= p + m - 1) {
-                if (b < bmin) bmin = b;
-                if (b > bmax) bmax = b;
-            }
-        }
-    }
-    return {bmin, bmax};
-}
-
-static void check_query_extremal_vs_brute_force(const std::string& text_raw,
-                                                  const std::string& pattern) {
-    const std::string text = with_sentinel(text_raw);
-    const size_t m = pattern.size();
-    if (m < 2) return;
-
-    LZ77Parser parser;
-    const auto phrases = parser.parse(text);
-    if (phrases.size() <= 1) return;
-
-    Grid2D grid;
-    grid.build(phrases, text);
-
-    sdsl::csa_wt<> csa_fwd;
-    sdsl::construct_im(csa_fwd, text_raw, 1);
-    const std::string text_rev(text_raw.rbegin(), text_raw.rend());
-    sdsl::csa_wt<> csa_rev;
-    sdsl::construct_im(csa_rev, text_rev, 1);
-
-    const size_t n = csa_fwd.size();
-
-    // Acumular boundaries de todos los splits para comparar con brute-force
-    size_t got_bmin = SIZE_MAX, got_bmax = 0;
-    size_t got_count = 0;
-
-    for (size_t i = 1; i < m; ++i) {
-        const std::string right_part(pattern.begin() + i, pattern.end());
-        const std::string left_rev(pattern.rbegin() + (m - i), pattern.rend());
-
-        size_t sp_r = 0, ep_r = n - 1;
-        sdsl::backward_search(csa_fwd, 0, n - 1, right_part.begin(), right_part.end(), sp_r, ep_r);
-        size_t sp_l = 0, ep_l = n - 1;
-        sdsl::backward_search(csa_rev, 0, n - 1, left_rev.begin(), left_rev.end(), sp_l, ep_l);
-
-        if (sp_r > ep_r || sp_l > ep_l) continue;
-
-        const auto ext = grid.query_extremal(sp_r, ep_r, sp_l, ep_l);
-        got_count += ext.count;
-        if (ext.count > 0) {
-            if (ext.boundary_min < got_bmin) got_bmin = ext.boundary_min;
-            if (ext.boundary_max > got_bmax) got_bmax = ext.boundary_max;
-        }
-    }
-
-    const auto [exp_bmin, exp_bmax] = brute_force_extremal_boundaries(text_raw, pattern, phrases);
-    const bool exp_found = (exp_bmin != SIZE_MAX);
-    const bool got_found = (got_count > 0);
-
-    EXPECT_EQ(got_found, exp_found) << "text=" << text_raw << " pattern=" << pattern;
-    if (exp_found && got_found) {
-        EXPECT_EQ(got_bmin, exp_bmin) << "boundary_min text=" << text_raw << " pattern=" << pattern;
-        EXPECT_EQ(got_bmax, exp_bmax) << "boundary_max text=" << text_raw << " pattern=" << pattern;
-    }
-}
-
-TEST(Grid2D_Extremal, Abracadabra) {
-    const std::string text = "abracadabra";
-    for (const std::string p : {"abr", "ra", "bra", "cada", "abra", "ab"}) {
-        SCOPED_TRACE("pattern=" + p);
-        check_query_extremal_vs_brute_force(text, p);
-    }
-}
-
-TEST(Grid2D_Extremal, Repetitive_DNA) {
-    const std::string text = "ACGTACGTACGTACGT";
-    for (const std::string p : {"ACGT", "CGTA", "GT", "ACGTACGT"}) {
-        SCOPED_TRACE("pattern=" + p);
-        check_query_extremal_vs_brute_force(text, p);
-    }
-}
-
-TEST(Grid2D_Extremal, AllSameChar) {
-    const std::string text = "aaaaaaaaaaaaaaaa";
-    for (const std::string p : {"aa", "aaa", "aaaa"}) {
-        SCOPED_TRACE("pattern=" + p);
-        check_query_extremal_vs_brute_force(text, p);
-    }
-}
-
-TEST(Grid2D_Extremal, NoMatch) {
-    const std::string text = with_sentinel("abracadabra");
-    LZ77Parser parser;
-    const auto phrases = parser.parse(text);
-    Grid2D grid;
-    grid.build(phrases, text);
-
-    // Rangos vacíos → count=0, boundary_min=SIZE_MAX, boundary_max=0
-    const auto ext = grid.query_extremal(5, 3, 5, 3);
-    EXPECT_EQ(ext.count, 0u);
-    EXPECT_EQ(ext.boundary_min, SIZE_MAX);
-    EXPECT_EQ(ext.boundary_max, 0u);
-}
 
 TEST(Grid2D_Extremal, TextPosConsistency) {
     // Para cada punto del WT, text_pos(j) debe ser start_{k+1} de alguna frase
@@ -446,15 +327,15 @@ TEST(Grid2D_Extremal, TextPosConsistency) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Tests de query_min_2d: invariante query_min_2d.boundary_min == query_extremal.boundary_min
+// Tests de query_min_2d: invariante query_min_2d.boundary_min == brute-force min
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Para cada split de cada patrón, verifica que query_min_2d y query_extremal
- * retornan el mismo count y el mismo boundary_min.
+ * Para cada split de cada patrón, verifica que query_min_2d retorna el mismo
+ * count y el mismo boundary_min que la enumeración brute-force vía query().
  */
-static void check_min_matches_extremal(const std::string& text_raw,
-                                        const std::string& pattern) {
+static void check_min_matches_enumeration(const std::string& text_raw,
+                                           const std::string& pattern) {
     const std::string text = with_sentinel(text_raw);
     const size_t m = pattern.size();
     if (m < 2) return;
@@ -485,13 +366,20 @@ static void check_min_matches_extremal(const std::string& text_raw,
 
         if (sp_r > ep_r || sp_l > ep_l) continue;
 
-        const auto ext = grid.query_extremal(sp_r, ep_r, sp_l, ep_l);
-        const auto mn  = grid.query_min_2d(sp_r, ep_r, sp_l, ep_l);
+        // Brute-force via query() enumeration
+        const auto [cnt, pts] = grid.query(sp_r, ep_r, sp_l, ep_l);
+        size_t exp_bmin = SIZE_MAX;
+        for (const auto& [wt_idx, y_rel] : pts) {
+            const size_t bp = grid.text_pos(wt_idx);
+            if (bp < exp_bmin) exp_bmin = bp;
+        }
 
-        EXPECT_EQ(mn.count, ext.count)
+        const auto mn = grid.query_min_2d(sp_r, ep_r, sp_l, ep_l);
+
+        EXPECT_EQ(mn.count, cnt)
             << "count mismatch split=" << i << " pattern=" << pattern;
-        if (ext.count > 0) {
-            EXPECT_EQ(mn.boundary_min, ext.boundary_min)
+        if (cnt > 0) {
+            EXPECT_EQ(mn.boundary_min, exp_bmin)
                 << "boundary_min mismatch split=" << i << " pattern=" << pattern;
         }
     }
@@ -501,7 +389,7 @@ TEST(Grid2D_MinRmq, MinMatchesEnumeration_Abracadabra) {
     const std::string text = "abracadabra";
     for (const std::string p : {"abr", "ra", "bra", "cada", "abra", "ab"}) {
         SCOPED_TRACE("pattern=" + p);
-        check_min_matches_extremal(text, p);
+        check_min_matches_enumeration(text, p);
     }
 }
 
@@ -509,7 +397,7 @@ TEST(Grid2D_MinRmq, MinMatchesEnumeration_Repetitive) {
     const std::string text = "ACGTACGTACGTACGT";
     for (const std::string p : {"ACGT", "CGTA", "GT", "ACGTACGT"}) {
         SCOPED_TRACE("pattern=" + p);
-        check_min_matches_extremal(text, p);
+        check_min_matches_enumeration(text, p);
     }
 }
 
@@ -517,7 +405,7 @@ TEST(Grid2D_MinRmq, MinMatchesEnumeration_AllSameChar) {
     const std::string text = "aaaaaaaaaaaaaaaa";
     for (const std::string p : {"aa", "aaa", "aaaa"}) {
         SCOPED_TRACE("pattern=" + p);
-        check_min_matches_extremal(text, p);
+        check_min_matches_enumeration(text, p);
     }
 }
 
@@ -525,7 +413,7 @@ TEST(Grid2D_MinRmq, MinMatchesEnumeration_DNASynthetic) {
     const std::string text = "AAACCCGGGTTTTAAACCC";
     for (const std::string p : {"AAA", "CCC", "AAACCC", "GGG", "TTT"}) {
         SCOPED_TRACE("pattern=" + p);
-        check_min_matches_extremal(text, p);
+        check_min_matches_enumeration(text, p);
     }
 }
 
@@ -542,10 +430,10 @@ TEST(Grid2D_MinRmq, EmptyGrid) {
     EXPECT_EQ(mn.boundary_min, SIZE_MAX);
 }
 
-// ── Grid2D_MaxRmq: query_max_2d == query_extremal.boundary_max ──────────────
+// ── Grid2D_MaxRmq: query_max_2d == brute-force max via query() ───────────────
 
-static void check_max_matches_extremal(const std::string& text_raw,
-                                        const std::string& pattern) {
+static void check_max_matches_enumeration(const std::string& text_raw,
+                                           const std::string& pattern) {
     const std::string text = with_sentinel(text_raw);
     const size_t m = pattern.size();
     if (m < 2) return;
@@ -576,13 +464,20 @@ static void check_max_matches_extremal(const std::string& text_raw,
 
         if (sp_r > ep_r || sp_l > ep_l) continue;
 
-        const auto ext = grid.query_extremal(sp_r, ep_r, sp_l, ep_l);
-        const auto mx  = grid.query_max_2d(sp_r, ep_r, sp_l, ep_l);
+        // Brute-force via query() enumeration
+        const auto [cnt, pts] = grid.query(sp_r, ep_r, sp_l, ep_l);
+        size_t exp_bmax = 0;
+        for (const auto& [wt_idx, y_rel] : pts) {
+            const size_t bp = grid.text_pos(wt_idx);
+            if (bp > exp_bmax) exp_bmax = bp;
+        }
 
-        EXPECT_EQ(mx.count, ext.count)
+        const auto mx = grid.query_max_2d(sp_r, ep_r, sp_l, ep_l);
+
+        EXPECT_EQ(mx.count, cnt)
             << "count mismatch split=" << i << " pattern=" << pattern;
-        if (ext.count > 0) {
-            EXPECT_EQ(mx.boundary_max, ext.boundary_max)
+        if (cnt > 0) {
+            EXPECT_EQ(mx.boundary_max, exp_bmax)
                 << "boundary_max mismatch split=" << i << " pattern=" << pattern;
         }
     }
@@ -592,7 +487,7 @@ TEST(Grid2D_MaxRmq, MaxMatchesEnumeration_Abracadabra) {
     const std::string text = "abracadabra";
     for (const std::string p : {"abr", "ra", "bra", "cada", "abra", "ab"}) {
         SCOPED_TRACE("pattern=" + p);
-        check_max_matches_extremal(text, p);
+        check_max_matches_enumeration(text, p);
     }
 }
 
@@ -600,7 +495,7 @@ TEST(Grid2D_MaxRmq, MaxMatchesEnumeration_Repetitive) {
     const std::string text = "ACGTACGTACGTACGT";
     for (const std::string p : {"ACGT", "CGTA", "GT", "ACGTACGT"}) {
         SCOPED_TRACE("pattern=" + p);
-        check_max_matches_extremal(text, p);
+        check_max_matches_enumeration(text, p);
     }
 }
 
@@ -608,7 +503,7 @@ TEST(Grid2D_MaxRmq, MaxMatchesEnumeration_AllSameChar) {
     const std::string text = "aaaaaaaaaaaaaaaa";
     for (const std::string p : {"aa", "aaa", "aaaa"}) {
         SCOPED_TRACE("pattern=" + p);
-        check_max_matches_extremal(text, p);
+        check_max_matches_enumeration(text, p);
     }
 }
 
@@ -616,7 +511,7 @@ TEST(Grid2D_MaxRmq, MaxMatchesEnumeration_DNASynthetic) {
     const std::string text = "AAACCCGGGTTTTAAACCC";
     for (const std::string p : {"AAA", "CCC", "AAACCC", "GGG", "TTT"}) {
         SCOPED_TRACE("pattern=" + p);
-        check_max_matches_extremal(text, p);
+        check_max_matches_enumeration(text, p);
     }
 }
 
