@@ -88,7 +88,7 @@ public:
     /**
      * Posición máxima entre ocurrencias primarias de pattern.
      *
-     * Simétrico a locate_min() usando WtMinRmq sobre valores de posición invertidos.
+     * Simétrico a locate_min() usando WmMaxRmq (wavelet matrix) por nivel.
      * Complejidad: O(m² · t_ψ + m · log² z) — no enumera puntos.
      * Retorna SIZE_MAX si no hay ocurrencias primarias.
      */
