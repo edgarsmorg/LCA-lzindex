@@ -34,6 +34,7 @@
 #include "taxonomy/classifier.hpp"
 #include "mem/extractor.hpp"
 #include "baseline/sr_index_locator.hpp"
+#include "test_helpers.hpp"
 
 #include <sdsl/suffix_arrays.hpp>
 
@@ -68,19 +69,10 @@ protected:
         sr_loc_.build(data_file.string(), tmp_dir_.string(), /*sr=*/4);
 
         // Árbol filogenético
-        tree_.build(
-            {0, 1, 2, 3, 4, 5, 6},
-            {"root", "A", "B", "A1", "A2", "B1", "B2"},
-            {PhyloTree::NO_PARENT, 0, 0, 1, 1, 2, 2}
-        );
+        tree_ = lz77tax::test::make_toy_tree();
 
         // Classifier
-        classifier_.setup(tree_, {
-            {  0, 21, 3},   // A1: [0..20] exclusive
-            { 21, 42, 4},   // A2: [21..41] exclusive
-            { 42, 64, 5},   // B1: [42..63] exclusive
-            { 64, 85, 6},   // B2: [64..84] exclusive
-        });
+        classifier_.setup(tree_, lz77tax::test::make_toy_genome_ranges_exclusive());
 
         // FM-index + MEMExtractor para ground-truth y classify_read
         sdsl::construct_im(fm_, REFERENCE, 1);

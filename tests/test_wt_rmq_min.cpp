@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "wavelet/wt_rmq_min.hpp"
+#include "test_helpers.hpp"
 
 #include <algorithm>
 #include <climits>
@@ -22,20 +23,8 @@ static sdsl::int_vector<> to_iv(const std::vector<size_t>& v) {
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Brute-force argmin 2D: escanea todos los puntos en el rectángulo.
-static WtMinRmq::ArgminResult brute_force_argmin(
-        const std::vector<size_t>& ys,
-        const std::vector<size_t>& vals,
-        size_t x_lo, size_t x_hi,
-        size_t y_lo, size_t y_hi) {
-    size_t count = 0, best_v = SIZE_MAX, best_i = SIZE_MAX;
-    for (size_t x = x_lo; x <= x_hi; ++x) {
-        if (ys[x] < y_lo || ys[x] > y_hi) continue;
-        count++;
-        if (vals[x] < best_v) { best_v = vals[x]; best_i = x; }
-    }
-    return {count, best_i};
-}
+// brute_force_range_2d() viene de test_helpers.hpp (namespace lz77tax::test).
+using lz77tax::test::brute_force_range_2d;
 
 /// Construye un WtMinRmq y lo llama; compara count y valor min con brute-force.
 static void check_all_rectangles(const std::vector<size_t>& ys,
@@ -53,7 +42,7 @@ static void check_all_rectangles(const std::vector<size_t>& ys,
             for (size_t y0 = 0; y0 < sigma; ++y0) {
                 for (size_t y1 = y0; y1 < sigma; ++y1) {
                     const auto got = wt.range_argmin_2d(x0, x1, y0, y1, vals_iv);
-                    const auto exp = brute_force_argmin(ys, vals, x0, x1, y0, y1);
+                    const auto exp = brute_force_range_2d(ys, vals, x0, x1, y0, y1);
 
                     ASSERT_EQ(got.count, exp.count)
                         << "count mismatch x=[" << x0 << "," << x1
@@ -62,7 +51,7 @@ static void check_all_rectangles(const std::vector<size_t>& ys,
                     if (exp.count > 0) {
                         // En empate el RMQ puede elegir cualquier índice;
                         // comparamos el VALOR mínimo, no el índice.
-                        ASSERT_EQ(vals[got.argmin_global], vals[exp.argmin_global])
+                        ASSERT_EQ(vals[got.argmin_global], exp.argmin_val)
                             << "min_value mismatch x=[" << x0 << "," << x1
                             << "] y=[" << y0 << "," << y1 << "]";
                     }
@@ -146,10 +135,10 @@ TEST(WtMinRmq_Query, ArgminMatchesBrute_AllSameY) {
     for (size_t x0 = 0; x0 < n; ++x0) {
         for (size_t x1 = x0; x1 < n; ++x1) {
             const auto got = wt.range_argmin_2d(x0, x1, 0, 0, vals_iv);
-            const auto exp = brute_force_argmin(ys, vals, x0, x1, 0, 0);
+            const auto exp = brute_force_range_2d(ys, vals, x0, x1, 0, 0);
             ASSERT_EQ(got.count, exp.count);
             if (exp.count > 0) {
-                ASSERT_EQ(vals[got.argmin_global], vals[exp.argmin_global]);
+                ASSERT_EQ(vals[got.argmin_global], exp.argmin_val);
             }
         }
     }
@@ -178,11 +167,11 @@ TEST(WtMinRmq_Query, ArgminMatchesBrute_Random_Medium) {
         if (y0 > y1) std::swap(y0, y1);
 
         const auto got = wt.range_argmin_2d(x0, x1, y0, y1, vals_iv);
-        const auto exp = brute_force_argmin(ys, vals, x0, x1, y0, y1);
+        const auto exp = brute_force_range_2d(ys, vals, x0, x1, y0, y1);
 
         ASSERT_EQ(got.count, exp.count) << "trial=" << trial;
         if (exp.count > 0) {
-            ASSERT_EQ(vals[got.argmin_global], vals[exp.argmin_global])
+            ASSERT_EQ(vals[got.argmin_global], exp.argmin_val)
                 << "trial=" << trial;
         }
     }

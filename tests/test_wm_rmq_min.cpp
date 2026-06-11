@@ -2,6 +2,7 @@
 
 #include "wavelet/wm_rmq_min.hpp"
 #include "wavelet/wt_rmq_min.hpp"  // oracle para comparación side-by-side
+#include "test_helpers.hpp"
 
 #include <algorithm>
 #include <climits>
@@ -19,24 +20,8 @@ static sdsl::int_vector<> to_iv(const std::vector<size_t>& v) {
     return iv;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Brute-force oracle
-// ─────────────────────────────────────────────────────────────────────────────
-
-struct BfResult { size_t count; size_t argmin; };
-
-static BfResult brute_force(const std::vector<size_t>& ys,
-                             const std::vector<size_t>& vals,
-                             size_t x_lo, size_t x_hi,
-                             size_t y_lo, size_t y_hi) {
-    size_t count = 0, best_v = SIZE_MAX, best_i = SIZE_MAX;
-    for (size_t x = x_lo; x <= x_hi; ++x) {
-        if (ys[x] < y_lo || ys[x] > y_hi) continue;
-        count++;
-        if (vals[x] < best_v) { best_v = vals[x]; best_i = x; }
-    }
-    return {count, best_i};
-}
+// brute_force_range_2d() viene de test_helpers.hpp (namespace lz77tax::test).
+using lz77tax::test::brute_force_range_2d;
 
 /// Verifica WmMinRmq contra brute-force en todos los rectángulos de n×sigma.
 static void check_all_rectangles(const std::vector<size_t>& ys,
@@ -54,14 +39,14 @@ static void check_all_rectangles(const std::vector<size_t>& ys,
             for (size_t y0 = 0; y0 < sigma; ++y0) {
                 for (size_t y1 = y0; y1 < sigma; ++y1) {
                     const auto got = wm.range_argmin_2d(x0, x1, y0, y1, vals_iv);
-                    const auto exp = brute_force(ys, vals, x0, x1, y0, y1);
+                    const auto exp = brute_force_range_2d(ys, vals, x0, x1, y0, y1);
 
                     ASSERT_EQ(got.count, exp.count)
                         << "count mismatch x=[" << x0 << "," << x1
                         << "] y=[" << y0 << "," << y1 << "]";
 
                     if (exp.count > 0) {
-                        ASSERT_EQ(vals[got.argmin_global], vals[exp.argmin]);
+                        ASSERT_EQ(vals[got.argmin_global], exp.argmin_val);
                     }
                 }
             }
@@ -171,10 +156,10 @@ TEST(WmMinRmq_Query, ArgminMatchesBrute_AllSameY) {
     for (size_t x0 = 0; x0 < n; ++x0) {
         for (size_t x1 = x0; x1 < n; ++x1) {
             const auto got = wm.range_argmin_2d(x0, x1, 0, 0, vals_iv);
-            const auto exp = brute_force(ys, vals, x0, x1, 0, 0);
+            const auto exp = brute_force_range_2d(ys, vals, x0, x1, 0, 0);
             ASSERT_EQ(got.count, exp.count);
             if (exp.count > 0)
-                ASSERT_EQ(vals[got.argmin_global], vals[exp.argmin]);
+                ASSERT_EQ(vals[got.argmin_global], exp.argmin_val);
         }
     }
 }
@@ -200,10 +185,10 @@ TEST(WmMinRmq_Query, ArgminMatchesBrute_Random_Medium) {
         if (x0 > x1) std::swap(x0, x1);
         if (y0 > y1) std::swap(y0, y1);
         const auto got = wm.range_argmin_2d(x0, x1, y0, y1, vals_iv);
-        const auto exp = brute_force(ys, vals, x0, x1, y0, y1);
+        const auto exp = brute_force_range_2d(ys, vals, x0, x1, y0, y1);
         ASSERT_EQ(got.count, exp.count) << "trial=" << trial;
         if (exp.count > 0)
-            ASSERT_EQ(vals[got.argmin_global], vals[exp.argmin]) << "trial=" << trial;
+            ASSERT_EQ(vals[got.argmin_global], exp.argmin_val) << "trial=" << trial;
     }
 }
 

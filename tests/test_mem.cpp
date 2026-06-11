@@ -14,6 +14,7 @@
 #include "mem/mem.hpp"
 #include "taxonomy/lca.hpp"
 #include "taxonomy/classifier.hpp"
+#include "test_helpers.hpp"
 
 #include <sdsl/suffix_arrays.hpp>
 #include <algorithm>
@@ -231,17 +232,8 @@ protected:
         sdsl::construct_im(csa_ref_, REFERENCE, 1);
         ext_ = std::make_unique<MEMExtractor>(csa_ref_);
 
-        tree_.build(
-            {0, 1, 2, 3, 4, 5, 6},
-            {"root", "A", "B", "A1", "A2", "B1", "B2"},
-            {PhyloTree::NO_PARENT, 0, 0, 1, 1, 2, 2});
-
-        classifier_.setup(tree_, {
-            {  0, 20, 3},
-            { 21, 41, 4},
-            { 42, 63, 5},
-            { 64, 84, 6},
-        });
+        tree_ = lz77tax::test::make_toy_tree();
+        classifier_.setup(tree_, lz77tax::test::make_toy_genome_ranges());
     }
 
     // Encadena: read → MEMs → locate_extremal → classify_extremal.

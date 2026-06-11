@@ -27,6 +27,7 @@
 #include "taxonomy/lca.hpp"
 #include "taxonomy/classifier.hpp"
 #include "mem/extractor.hpp"
+#include "test_helpers.hpp"
 
 #include <sdsl/suffix_arrays.hpp>
 #include <cstdlib>
@@ -71,17 +72,8 @@ protected:
         fm_ext_ = std::make_unique<MEMExtractor>(fm_);
 
         // Árbol filogenético
-        tree_.build(
-            {0, 1, 2, 3, 4, 5, 6},
-            {"root", "A", "B", "A1", "A2", "B1", "B2"},
-            {PhyloTree::NO_PARENT, 0, 0, 1, 1, 2, 2});
-
-        classifier_.setup(tree_, {
-            {  0, 20, 3},   // A1: [0..19]
-            { 21, 41, 4},   // A2: [21..40]
-            { 42, 63, 5},   // B1: [42..62]
-            { 64, 84, 6},   // B2: [64..83]
-        });
+        tree_ = lz77tax::test::make_toy_tree();
+        classifier_.setup(tree_, lz77tax::test::make_toy_genome_ranges());
     }
 
     void TearDown() override {

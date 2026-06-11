@@ -35,6 +35,7 @@
 #include "taxonomy/lca.hpp"
 #include "taxonomy/classifier.hpp"
 #include "mem/extractor.hpp"
+#include "test_helpers.hpp"
 
 #include <sdsl/suffix_arrays.hpp>
 #include <climits>
@@ -59,18 +60,8 @@ protected:
     void SetUp() override {
         idx_.build(REFERENCE);
 
-        tree_.build(
-            {0, 1, 2, 3, 4, 5, 6},
-            {"root", "A", "B", "A1", "A2", "B1", "B2"},
-            {PhyloTree::NO_PARENT, 0, 0, 1, 1, 2, 2}
-        );
-
-        classifier_.setup(tree_, {
-            {  0, 20, 3},   // A1: [0..19]
-            { 21, 41, 4},   // A2: [21..40]
-            { 42, 63, 5},   // B1: [42..62]
-            { 64, 84, 6},   // B2: [64..83]
-        });
+        tree_ = lz77tax::test::make_toy_tree();
+        classifier_.setup(tree_, lz77tax::test::make_toy_genome_ranges());
 
         sdsl::construct_im(fm_, REFERENCE, 1);
         ext_ = std::make_unique<MEMExtractor>(fm_);
@@ -101,9 +92,7 @@ protected:
 // ─────────────────────────────────────────────────────────────────────────────
 
 TEST(PhyloTreeTest, Depths) {
-    PhyloTree t;
-    t.build({0,1,2,3,4,5,6}, {"root","A","B","A1","A2","B1","B2"},
-            {PhyloTree::NO_PARENT,0,0,1,1,2,2});
+    const PhyloTree t = lz77tax::test::make_toy_tree();
 
     EXPECT_EQ(t.depth(0), 0);
     EXPECT_EQ(t.depth(1), 1);
@@ -115,9 +104,7 @@ TEST(PhyloTreeTest, Depths) {
 }
 
 TEST(PhyloTreeTest, LCA_SameNode) {
-    PhyloTree t;
-    t.build({0,1,2,3,4,5,6}, {"root","A","B","A1","A2","B1","B2"},
-            {PhyloTree::NO_PARENT,0,0,1,1,2,2});
+    const PhyloTree t = lz77tax::test::make_toy_tree();
 
     EXPECT_EQ(t.lca(0, 0), 0);
     EXPECT_EQ(t.lca(3, 3), 3);
@@ -125,9 +112,7 @@ TEST(PhyloTreeTest, LCA_SameNode) {
 }
 
 TEST(PhyloTreeTest, LCA_ParentChild) {
-    PhyloTree t;
-    t.build({0,1,2,3,4,5,6}, {"root","A","B","A1","A2","B1","B2"},
-            {PhyloTree::NO_PARENT,0,0,1,1,2,2});
+    const PhyloTree t = lz77tax::test::make_toy_tree();
 
     EXPECT_EQ(t.lca(1, 3), 1);   // A y A1 → A
     EXPECT_EQ(t.lca(2, 5), 2);   // B y B1 → B
@@ -135,18 +120,14 @@ TEST(PhyloTreeTest, LCA_ParentChild) {
 }
 
 TEST(PhyloTreeTest, LCA_Siblings) {
-    PhyloTree t;
-    t.build({0,1,2,3,4,5,6}, {"root","A","B","A1","A2","B1","B2"},
-            {PhyloTree::NO_PARENT,0,0,1,1,2,2});
+    const PhyloTree t = lz77tax::test::make_toy_tree();
 
     EXPECT_EQ(t.lca(3, 4), 1);   // A1, A2 → A
     EXPECT_EQ(t.lca(5, 6), 2);   // B1, B2 → B
 }
 
 TEST(PhyloTreeTest, LCA_CrossSubtrees) {
-    PhyloTree t;
-    t.build({0,1,2,3,4,5,6}, {"root","A","B","A1","A2","B1","B2"},
-            {PhyloTree::NO_PARENT,0,0,1,1,2,2});
+    const PhyloTree t = lz77tax::test::make_toy_tree();
 
     EXPECT_EQ(t.lca(3, 5), 0);   // A1, B1 → root
     EXPECT_EQ(t.lca(4, 6), 0);   // A2, B2 → root
