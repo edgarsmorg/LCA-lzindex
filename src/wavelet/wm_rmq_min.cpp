@@ -16,46 +16,37 @@ namespace lz77tax {
 // ─────────────────────────────────────────────────────────────────────────────
 
 template <bool t_min>
-void WmRmq<t_min>::build(const std::vector<size_t>& y_values,
-                         const sdsl::int_vector<>& text_pos,
-                         size_t sigma) {
-    assert(y_values.size() == text_pos.size());
-    n_     = y_values.size();
-    sigma_ = sigma;
-    rmqs_.clear();
-    wm_   = WmAccess{};
-    if (n_ == 0 || sigma_ == 0) return;
+void WmRmq<t_min>::build_wm(const std::vector<size_t>& y_values, size_t sigma) {
+    sdsl::int_vector<> R(n_, 0, sdsl::bits::hi(sigma - 1) + 1);
+    for (size_t i = 0; i < n_; ++i) R[i] = y_values[i];
+    sdsl::construct_im(static_cast<sdsl::wm_int<>&>(wm_), R);
+}
 
-    // ── 1. Construir wavelet matrix desde y_values ────────────────────────────
-    {
-        sdsl::int_vector<> R(n_, 0, sdsl::bits::hi(sigma_ - 1) + 1);
-        for (size_t i = 0; i < n_; ++i) R[i] = y_values[i];
-        sdsl::construct_im(static_cast<sdsl::wm_int<>&>(wm_), R);
-    }
-
+template <bool t_min>
+void WmRmq<t_min>::build_level_rmqs(const sdsl::int_vector<>& text_pos) {
     const uint32_t L = wm_.max_level;
     rmqs_.resize(L + 1);
 
-    // ── 2. Construir un RMQ por nivel, trazando la permutación ────────────────
+    // Trazar la permutación de índices que induce la wavelet matrix nivel a nivel.
     std::vector<size_t> perm(n_);
     std::iota(perm.begin(), perm.end(), 0);
 
     for (uint32_t k = 0; k <= L; ++k) {
-        {
-            size_t max_w = 0;
-            for (size_t i = 0; i < n_; ++i)
-                max_w = std::max(max_w, static_cast<size_t>(text_pos[perm[i]]));
+        // Construir RMQ del nivel k sobre los pesos reordenados por perm.
+        size_t max_w = 0;
+        for (size_t i = 0; i < n_; ++i)
+            max_w = std::max(max_w, static_cast<size_t>(text_pos[perm[i]]));
 
-            const uint8_t w = max_w ? static_cast<uint8_t>(sdsl::bits::hi(max_w) + 1) : 1;
-            sdsl::int_vector<> weights(n_, 0, w);
-            for (size_t i = 0; i < n_; ++i)
-                weights[i] = text_pos[perm[i]];
+        const uint8_t w = max_w ? static_cast<uint8_t>(sdsl::bits::hi(max_w) + 1) : 1;
+        sdsl::int_vector<> weights(n_, 0, w);
+        for (size_t i = 0; i < n_; ++i)
+            weights[i] = text_pos[perm[i]];
 
-            rmqs_[k] = sdsl::rmq_succinct_sct<t_min>(&weights);
-        }
+        rmqs_[k] = sdsl::rmq_succinct_sct<t_min>(&weights);
 
         if (k == L) break;
 
+        // Avanzar perm al siguiente nivel: primero los 0-bits, luego los 1-bits.
         std::vector<size_t> left_perm, right_perm;
         left_perm.reserve(n_);
         right_perm.reserve(n_);
@@ -70,6 +61,21 @@ void WmRmq<t_min>::build(const std::vector<size_t>& y_values,
         perm.insert(perm.end(), left_perm.begin(),  left_perm.end());
         perm.insert(perm.end(), right_perm.begin(), right_perm.end());
     }
+}
+
+template <bool t_min>
+void WmRmq<t_min>::build(const std::vector<size_t>& y_values,
+                         const sdsl::int_vector<>& text_pos,
+                         size_t sigma) {
+    assert(y_values.size() == text_pos.size());
+    n_     = y_values.size();
+    sigma_ = sigma;
+    rmqs_.clear();
+    wm_   = WmAccess{};
+    if (n_ == 0 || sigma_ == 0) return;
+
+    build_wm(y_values, sigma_);
+    build_level_rmqs(text_pos);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

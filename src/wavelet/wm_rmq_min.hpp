@@ -11,6 +11,7 @@
 
 namespace lz77tax {
 
+// API idéntica a WtRmq<t_min> (wt_rmq_min.hpp) — drop-in replacement.
 /**
  * Wavelet Matrix (flat) con RMQ por nivel.
  *
@@ -80,6 +81,9 @@ private:
 
     size_t n_     = 0;
     size_t sigma_ = 0;
+
+    void build_wm(const std::vector<size_t>& y_values, size_t sigma);
+    void build_level_rmqs(const sdsl::int_vector<>& text_pos);
 
     size_t unwind(size_t j, uint32_t from_depth) const;
 

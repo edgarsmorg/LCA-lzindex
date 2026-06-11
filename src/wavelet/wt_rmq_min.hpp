@@ -16,6 +16,9 @@
 namespace lz77tax {
 
 /**
+ * @deprecated Variante legacy: solo para benchmarks comparativos frente a WmRmq.
+ * Para producción usar WmRmq (wm_rmq_min.hpp).
+ *
  * Wavelet Tree binario con RMQ topológico por nodo (Ferrada-Navarro style).
  *
  * Resuelve argmin (t_min=true) o argmax (t_min=false) 2D en O(log² σ).
