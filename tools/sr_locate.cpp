@@ -17,17 +17,17 @@
  * generados por bm_construct_ri).
  */
 
-#include <iostream>
-#include <fstream>
-#include <string>
-#include <vector>
 #include <algorithm>
 #include <filesystem>
+#include <iostream>
+#include <string>
+#include <vector>
 
 #include <gflags/gflags.h>
 #include <sdsl/config.hpp>
 #include <sdsl/int_vector_buffer.hpp>
 
+#include "bench_common.hpp"
 #include "sr-index/config.h"
 #include "sr-index/r_index.h"
 
@@ -62,18 +62,16 @@ int main(int argc, char** argv) {
     }
 
     // Leer patrones y hacer locate
-    std::ifstream pat_file(FLAGS_patterns);
-    if (!pat_file) {
-        std::cerr << "Error: no se puede abrir " << FLAGS_patterns << "\n";
+    std::vector<std::string> patterns;
+    try { patterns = bench::read_patterns(FLAGS_patterns); }
+    catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << "\n";
         return 3;
     }
 
     using Sequence = sri::Alphabet<>::string_type;
 
-    std::string line;
-    while (std::getline(pat_file, line)) {
-        if (line.empty()) continue;
-
+    for (const auto& line : patterns) {
         // Convertir string a Sequence (uint8_t)
         Sequence pattern(line.begin(), line.end());
 

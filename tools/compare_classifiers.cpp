@@ -36,6 +36,7 @@
 #include <string>
 #include <vector>
 
+#include "bench_common.hpp"
 #include "index.hpp"
 #include "taxonomy/lca.hpp"
 #include "taxonomy/classifier.hpp"
@@ -195,8 +196,10 @@ int main(int argc, char** argv) {
 
     for (int i = 6; i < argc; ++i) {
         std::string arg(argv[i]);
-        if (arg.rfind("--out=", 0) == 0)      out_csv = arg.substr(6);
-        else if (arg.rfind("--min-mem=", 0) == 0) min_mem = std::stoul(arg.substr(10));
+        const std::string val_out    = bench::option_value(arg, "out");
+        const std::string val_minmem = bench::option_value(arg, "min-mem");
+        if (!val_out.empty())         out_csv = val_out;
+        else if (!val_minmem.empty()) min_mem = std::stoul(val_minmem);
         else { try { sr = std::stoul(arg); } catch (...) {
             std::cerr << "Argumento desconocido: " << arg << "\n";
             usage(argv[0]); return 1;
@@ -214,11 +217,8 @@ int main(int argc, char** argv) {
     // ── Cargar texto de referencia ────────────────────────────────────────────
     std::cout << "Cargando texto de referencia..." << std::flush;
     std::string ref_text;
-    {
-        std::ifstream f(ref_path, std::ios::binary);
-        if (!f) { std::cerr << "\nNo se puede abrir: " << ref_path << "\n"; return 2; }
-        ref_text.assign(std::istreambuf_iterator<char>(f), {});
-    }
+    try { ref_text = bench::read_text_file(ref_path); }
+    catch (const std::exception& e) { std::cerr << "\n" << e.what() << "\n"; return 2; }
     std::cout << " " << ref_text.size() << " bytes\n";
 
     // ── Construir LZ77Index ────────────────────────────────────────────────────

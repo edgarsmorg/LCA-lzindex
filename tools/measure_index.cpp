@@ -6,11 +6,10 @@
  *   measure_index <text_file> [--patterns=<file>]
  */
 
+#include "bench_common.hpp"
 #include "index.hpp"
 #include "lz77/grid.hpp"
 
-#include <chrono>
-#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <random>
@@ -18,7 +17,7 @@
 #include <vector>
 
 using namespace lz77tax;
-using Clock = std::chrono::steady_clock;
+using Clock = bench::Clock;
 using us    = std::chrono::microseconds;
 
 static void print_row(const std::string& label, size_t bytes, size_t n) {
@@ -86,8 +85,9 @@ int main(int argc, char** argv) {
     std::string patterns_path;
     for (int i = 2; i < argc; ++i) {
         std::string arg(argv[i]);
-        if (arg.rfind("--patterns=", 0) == 0) {
-            patterns_path = arg.substr(11);
+        const std::string val = bench::option_value(arg, "patterns");
+        if (!val.empty()) {
+            patterns_path = val;
         } else {
             std::cerr << "argumento desconocido: " << arg << "\n";
             return 1;
@@ -95,9 +95,9 @@ int main(int argc, char** argv) {
     }
 
     std::cout << "Leyendo texto... " << std::flush;
-    std::ifstream f(argv[1]);
-    if (!f) { std::cerr << "\nno se puede abrir: " << argv[1] << "\n"; return 1; }
-    const std::string text((std::istreambuf_iterator<char>(f)), {});
+    std::string text;
+    try { text = bench::read_text_file(argv[1]); }
+    catch (const std::exception& e) { std::cerr << "\n" << e.what() << "\n"; return 1; }
     if (text.empty()) { std::cerr << "\ntexto vacío\n"; return 1; }
 
     const size_t n = text.size();
@@ -124,11 +124,8 @@ int main(int argc, char** argv) {
     std::vector<std::string> patterns;
     std::string patterns_source = "aleatorios (8–32 bp)";
     if (!patterns_path.empty()) {
-        std::ifstream pf(patterns_path);
-        if (!pf) { std::cerr << "no se puede abrir patterns: " << patterns_path << "\n"; return 1; }
-        std::string line;
-        while (std::getline(pf, line))
-            if (!line.empty()) patterns.push_back(line);
+        try { patterns = bench::read_patterns(patterns_path); }
+        catch (const std::exception& e) { std::cerr << e.what() << "\n"; return 1; }
         patterns_source = patterns_path + " (" + std::to_string(patterns.size()) + " patrones)";
     } else {
         std::mt19937 rng(42);

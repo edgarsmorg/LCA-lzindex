@@ -17,17 +17,17 @@
 #include <cassert>
 #include <chrono>
 #include <cstdlib>
-#include <fstream>
 #include <iostream>
 #include <random>
 #include <string>
 #include <vector>
 
+#include "bench_common.hpp"
 #include "index.hpp"
 #include "lz77/parser.hpp"
 
 using namespace lz77tax;
-using Clock = std::chrono::steady_clock;
+using Clock = bench::Clock;
 
 // ─── Leer FASTA, concatenar secuencias (sin headers ni newlines) ─────────────
 static std::string read_fasta(const std::string& path) {

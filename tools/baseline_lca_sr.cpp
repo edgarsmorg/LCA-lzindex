@@ -23,13 +23,13 @@
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
-#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <string>
 #include <vector>
 #include <sys/resource.h>
 
+#include "bench_common.hpp"
 #include "baseline/sr_index_locator.hpp"
 
 using namespace lz77tax;
@@ -110,20 +110,8 @@ int main(int argc, char** argv) {
 
     // ── Leer patrones ─────────────────────────────────────────────────────────
     std::vector<std::string> patterns;
-    {
-        std::ifstream pf(patterns_path);
-        if (!pf) {
-            std::cerr << "No se puede abrir: " << patterns_path << "\n";
-            return 3;
-        }
-        std::string line;
-        while (std::getline(pf, line))
-            if (!line.empty()) patterns.push_back(std::move(line));
-    }
-    if (patterns.empty()) {
-        std::cerr << "No se encontraron patrones en " << patterns_path << "\n";
-        return 4;
-    }
+    try { patterns = bench::read_patterns(patterns_path); }
+    catch (const std::exception& e) { std::cerr << e.what() << "\n"; return 3; }
     std::cout << "patrones : " << patterns.size() << "\n\n";
 
     // ── Warmup ────────────────────────────────────────────────────────────────
