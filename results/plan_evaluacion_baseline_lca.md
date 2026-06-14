@@ -66,7 +66,7 @@ Fixture nuevo `ClassifyCompareTest` que replica el árbol de 4 hojas de `tests/t
 1. **Conversor de árbol**: correr `tree_json_to_tsv.py`; validar a mano que `start[i+1] - end[i] == 1` para todo i y que `end[-1] + 1 == len(reference.txt)`.
 2. **Generador de reads**: correr `gen_classification_reads.py`; `grep` algunos reads en `reference.txt` para confirmar posición/genoma.
 3. **Tests unitarios** (fixture `ClassifyCompareTest`): compilar y correr `ctest`. **Deben pasar antes** de continuar — si el sr-index no da LCA exacto sobre 4 hojas, no tiene sentido escalar.
-4. **Tool `compare_classifiers`**: compilar; correr primero en modo `--self-test` sobre el dataset de 4 hojas (replicado in-memory) para sanity-check; luego sobre `data/repetitive` (requiere construir antes el sr-index para `data/repetitive/reference.txt` — extender `scripts/run_sr_index.sh` para apuntarlo a ese dataset).
+4. **Tool `compare_classifiers`**: compilar; correr primero en modo `--self-test` sobre el dataset de 4 hojas (replicado in-memory) para sanity-check; luego sobre `data/repetitive` (requiere construir antes el sr-index para `data/repetitive/reference.txt` — usar la herramienta `build_sr_index` o `scripts/run_microbench_suite.sh` apuntando a ese dataset).
 5. **Wrapper `run_compare_classifiers.sh`**: correr para s∈{16, 32}; los resultados de clasificación deben ser **idénticos** entre ambos s (s solo afecta tiempo/espacio del locate, no qué ocurrencias retorna).
 
 ## Verificación end-to-end (criterios de aceptación)

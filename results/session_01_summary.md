@@ -137,7 +137,7 @@ results/
 
 - [ ] `.clang-format` con estilo Google
 - [ ] Corpus real descargado (URLs de Pizza&Chili a verificar)
-- [ ] `scripts/run_sr_index.sh` — ejecutar desde subdirectorio para no contaminar cwd con .sdsl
+- [ ] construir el sr-index desde un subdirectorio para no contaminar cwd con .sdsl (script `run_sr_index.sh` retirado; usar `scripts/run_microbench_suite.sh`)
 - [ ] LaTeX `docs/memoria.tex` — estructura inicial caps 1-2
 
 ---
@@ -154,6 +154,6 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build --parallel
 # Verificar pipeline sintético sigue verde
 python3 scripts/test_synthetic_lca.py
 
-# Correr sr-index sobre datos sintéticos
-./scripts/run_sr_index.sh data/synthetic/reference.txt 4 16
+# Construir sr-index + benchmark locate/espacio (suite parametrizable)
+./scripts/run_microbench_suite.sh --manifest bench/datasets.json
 ```
