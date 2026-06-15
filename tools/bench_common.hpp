@@ -122,28 +122,9 @@ inline std::vector<fs::path> lz_files(const fs::path& prefix) {
     };
 }
 
-// Tamaño real del sr-index en disco: suma todos los .sdsl del directorio
-// excepto los artefactos de construcción (sa, bwt cruda, text).
-// El sr-index serializa su data en GenericStorage y su serialize() solo
-// emite metadata, por lo que size_in_bytes() subestima masivamente el tamaño.
-inline std::uintmax_t sr_index_bytes(const fs::path& dir,
-                                     const std::string& dataset) {
-    const std::string sa_stem   = "sa_"   + dataset;
-    const std::string bwt_stem  = "bwt_"  + dataset;
-    const std::string text_stem = "text_" + dataset;
-
-    std::uintmax_t total = 0;
-    std::error_code ec;
-    if (!fs::exists(dir, ec)) return 0;
-    for (const auto& entry : fs::recursive_directory_iterator(dir, ec)) {
-        if (ec) break;
-        if (!entry.is_regular_file(ec)) continue;
-        if (entry.path().extension() != ".sdsl") continue;
-        const std::string stem = entry.path().stem().string();
-        if (stem == sa_stem || stem == bwt_stem || stem == text_stem) continue;
-        total += entry.file_size(ec);
-    }
-    return total;
-}
+// NOTA: para el tamaño real del sr-index consultable usar
+// SrIndexLocator::size_in_bytes() (serializa solo las estructuras cargadas en
+// memoria). Sumar los .sdsl del directorio sobreestima ~5× porque incluye
+// intermedios de construcción (p.ej. versiones planas con gemelo comprimido).
 
 }  // namespace bench

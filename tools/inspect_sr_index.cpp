@@ -30,12 +30,14 @@ int main(int argc, char** argv) {
     }
 
     const auto n_bytes = fs::file_size(text_path);
-    // Valida que el índice es cargable pero no usamos size_in_bytes(): el
-    // sr-index almacena su data en GenericStorage y serialize() solo emite
-    // metadata, subestimando el tamaño real por ~5×.
+    // Tamaño real del índice consultable = size_in_bytes(), que serializa solo
+    // las estructuras que el índice carga en memoria (verificado contra el
+    // conjunto de archivos que abre SrIndexValidArea::load: coinciden al byte).
+    // NO sumar los .sdsl del directorio: eso incluye intermedios de construcción
+    // (versiones planas con gemelo comprimido) y sobreestima ~5×.
     SrIndexLocator idx;
     idx.load(dataset, sr_dir.string(), s);
-    const auto serialized = bench::sr_index_bytes(sr_dir, dataset);
+    const auto serialized = idx.size_in_bytes();
     const auto disk = bench::sum_files_with_extension(sr_dir, ".sdsl");
     const double bpc = n_bytes ? serialized * 8.0 / static_cast<double>(n_bytes) : 0.0;
 
