@@ -49,3 +49,7 @@ data/**/*.fmr
 tmp/
 *.tmp
 *.temp
+
+
+docs/memoria
+CLAUDE.md
