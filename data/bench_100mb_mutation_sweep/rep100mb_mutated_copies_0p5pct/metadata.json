@@ -1,0 +1,13 @@
+{
+  "name": "rep100mb_mutated_copies_0p5pct",
+  "type": "mutated_copies",
+  "genome_len": 1048576,
+  "copies": 100,
+  "mutation_rate": 0.005,
+  "seed": 302,
+  "pattern_count": 10000,
+  "pattern_len": 32,
+  "n_bytes": 104857600,
+  "reference": "reference.txt",
+  "patterns": "patterns.txt"
+}
