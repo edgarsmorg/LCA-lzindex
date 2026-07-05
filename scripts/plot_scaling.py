@@ -212,6 +212,8 @@ def main():
             "bpc": _float_or_none(r.get("total_bpc")),
             "build": _float_or_none(r.get("build_time_s")),
             "query": _float_or_none(r.get("locate_ext_us")),
+            "lca": _float_or_none(r.get("lca_us")),
+            "total": _float_or_none(r.get("locate_lca_us")),
         }
         if n not in seen:
             seen.add(n)
@@ -243,6 +245,12 @@ def main():
         dict(key="query", title="Tiempo de locate extremal (LZ77 y sr-index)",
              ylabel="Tiempo (μs/query)", yscale=None, y_formatter=None,
              text_line=False, out_path=out_dir / "scaling_query.png"),
+        dict(key="lca", title="Tiempo del paso LCA (pos → genoma → LCA)",
+             ylabel="Tiempo (μs/query)", yscale=None, y_formatter=None,
+             text_line=False, out_path=out_dir / "scaling_lca.png"),
+        dict(key="total", title="Tiempo total: locate extremal + LCA (LZ77 y sr-index)",
+             ylabel="Tiempo (μs/query)", yscale=None, y_formatter=None,
+             text_line=False, out_path=out_dir / "scaling_total.png"),
     ]
 
     saved = []

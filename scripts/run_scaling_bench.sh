@@ -11,7 +11,7 @@
 # Salida:
 #   $out/raw/build.csv   — tiempos de construcción (LZ + SR)
 #   $out/raw/size.csv    — espacio por componente  (LZ + SR)
-#   $out/raw/locate.csv  — tiempo de query          (LZ + SR)
+#   $out/raw/locate.csv  — tiempo de query: locate_extremal + paso LCA (LZ + SR)
 #   $out/scaling.csv     — CSV unificado (join de los 3)
 #   $out/logs/           — stdout/stderr por dataset
 #
@@ -192,7 +192,8 @@ def read(path):
 # Índice por (dataset, index, s)
 build_map  = {}
 size_map   = {}
-locate_map = defaultdict(list)
+locate_map = defaultdict(lambda: defaultdict(list))  # key -> metric -> [valores]
+npat_map   = {}
 
 for r in read(build_path):
     key = (r["dataset"], r["index"], r.get("s", "0"))
@@ -202,12 +203,25 @@ for r in read(size_path):
     key = (r["dataset"], r["index"], r.get("s", "0"))
     size_map[key] = r
 
+def _f(v):
+    try: return float(v)
+    except (TypeError, ValueError): return None
+
 for r in read(locate_path):
     key = (r["dataset"], r["index"], r.get("s", "0"))
-    locate_map[key].append(float(r["us_per_query"]))
+    for m in ("us_per_query", "lca_us", "total_us"):
+        v = _f(r.get(m))
+        if v is not None:
+            locate_map[key][m].append(v)
+    npat_map[key] = r.get("n_patterns", "")
 
-header = "dataset,n_bytes,index,s,build_time_s,total_bytes,total_bpc,n_patterns,locate_ext_us"
+header = ("dataset,n_bytes,index,s,build_time_s,total_bytes,total_bpc,"
+          "n_patterns,locate_ext_us,lca_us,locate_lca_us")
 rows = []
+
+def _avg(key, metric):
+    vals = locate_map.get(key, {}).get(metric, [])
+    return f"{mean(vals):.6f}" if vals else ""
 
 for key, sz in size_map.items():
     dataset, index, s = key
@@ -215,19 +229,13 @@ for key, sz in size_map.items():
     total_b    = sz.get("serialized_bytes", "")
     bpc        = sz.get("bpc", "")
     build_s    = build_map.get(key, {}).get("build_seconds", "")
-    locs       = locate_map.get(key, [])
-    n_pat      = ""
-    loc_us     = ""
-    if locs:
-        loc_us = f"{mean(locs):.6f}"
-        # n_patterns viene del locate csv
-        for r in read(locate_path):
-            if (r["dataset"], r["index"], r.get("s","0")) == key:
-                n_pat = r.get("n_patterns", "")
-                break
+    n_pat      = npat_map.get(key, "")
+    loc_us     = _avg(key, "us_per_query")   # tiempo de locate_extremal
+    lca_us     = _avg(key, "lca_us")         # tiempo del paso LCA (pos->genoma->lca)
+    total_us   = _avg(key, "total_us")       # locate + lca
 
     rows.append((dataset, n_bytes, index, s, build_s,
-                 total_b, bpc, n_pat, loc_us))
+                 total_b, bpc, n_pat, loc_us, lca_us, total_us))
 
 # Ordenar: primero por n_bytes, luego por index
 try:
