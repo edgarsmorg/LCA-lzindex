@@ -109,6 +109,42 @@ TEST(Grid2D_Build, AllLiterals) {
     EXPECT_EQ(grid.point_count(), phrases.size() - 1);
 }
 
+TEST(Grid2D_FilteredExtremal, MinSkipsShortPhraseExtremal) {
+    Grid2D grid;
+    grid.build_from_trie_coords(
+        /*R=*/{0, 1},
+        /*boundaries=*/{10, 20},
+        /*phrase_lens=*/{1, 5});
+
+    const auto fast = grid.query_min_direct(0, 1, 0, 1);
+    ASSERT_EQ(fast.count, 2u);
+    EXPECT_EQ(fast.boundary_min, 10u);
+    EXPECT_LT(grid.phrase_total_len(fast.wt_idx), 3u);
+
+    const auto filtered = grid.query_min_filtered(0, 1, 0, 1, 3);
+    ASSERT_EQ(filtered.count, 1u);
+    EXPECT_EQ(filtered.boundary_min, 20u);
+    EXPECT_GE(grid.phrase_total_len(filtered.wt_idx), 3u);
+}
+
+TEST(Grid2D_FilteredExtremal, MaxSkipsShortPhraseExtremal) {
+    Grid2D grid;
+    grid.build_from_trie_coords(
+        /*R=*/{0, 1},
+        /*boundaries=*/{20, 10},
+        /*phrase_lens=*/{1, 5});
+
+    const auto fast = grid.query_max_direct(0, 1, 0, 1);
+    ASSERT_EQ(fast.count, 2u);
+    EXPECT_EQ(fast.boundary_max, 20u);
+    EXPECT_LT(grid.phrase_total_len(fast.wt_idx), 3u);
+
+    const auto filtered = grid.query_max_filtered(0, 1, 0, 1, 3);
+    ASSERT_EQ(filtered.count, 1u);
+    EXPECT_EQ(filtered.boundary_max, 10u);
+    EXPECT_GE(grid.phrase_total_len(filtered.wt_idx), 3u);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Invariantes de las coordenadas
 // ─────────────────────────────────────────────────────────────────────────────
@@ -146,7 +182,7 @@ TEST(Grid2D_Invariants, RisPermutation) {
     const size_t z1 = grid.point_count();
     std::vector<bool> seen(z1, false);
     for (size_t j = 0; j < z1; ++j) {
-        const size_t val = grid.wt()[j];
+        const size_t val = grid.wm()[j];
         ASSERT_LT(val, z1) << "Valor fuera de rango en R[" << j << "]";
         ASSERT_FALSE(seen[val]) << "Valor duplicado en R: " << val;
         seen[val] = true;
@@ -165,7 +201,7 @@ TEST(Grid2D_Invariants, RisPermutation_Repetitive) {
     const size_t z1 = grid.point_count();
     std::vector<bool> seen(z1, false);
     for (size_t j = 0; j < z1; ++j) {
-        const size_t val = grid.wt()[j];
+        const size_t val = grid.wm()[j];
         ASSERT_LT(val, z1);
         ASSERT_FALSE(seen[val]);
         seen[val] = true;

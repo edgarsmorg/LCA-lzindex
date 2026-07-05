@@ -37,6 +37,7 @@
 #include <vector>
 
 #include "bench_common.hpp"
+#include "classify_io.hpp"
 #include "index.hpp"
 #include "taxonomy/lca.hpp"
 #include "taxonomy/classifier.hpp"
@@ -58,91 +59,7 @@ static void usage(const char* prog) {
            " [sr=16] [--out=<csv>] [--min-mem=31]\n";
 }
 
-// ── Carga del árbol desde TSV ─────────────────────────────────────────────────
-
-static bool load_tree(const std::string& path, PhyloTree& tree) {
-    std::ifstream f(path);
-    if (!f) { std::cerr << "No se puede abrir: " << path << "\n"; return false; }
-
-    std::vector<int>         ids, parents;
-    std::vector<std::string> names;
-
-    std::string line;
-    std::getline(f, line);  // header
-    while (std::getline(f, line)) {
-        if (line.empty()) continue;
-        std::istringstream ss(line);
-        std::string nid_s, pid_s, name, gidx_s;
-        std::getline(ss, nid_s, '\t');
-        std::getline(ss, pid_s, '\t');
-        std::getline(ss, name,   '\t');
-        std::getline(ss, gidx_s, '\t');
-        ids.push_back(std::stoi(nid_s));
-        parents.push_back(std::stoi(pid_s));
-        names.push_back(name);
-    }
-    tree.build(ids, names, parents);
-    return true;
-}
-
-// ── Carga de rangos de genoma desde TSV ──────────────────────────────────────
-
-static bool load_genomes(const std::string& path,
-                         std::vector<Classifier::GenomeRange>& genomes) {
-    std::ifstream f(path);
-    if (!f) { std::cerr << "No se puede abrir: " << path << "\n"; return false; }
-
-    std::string line;
-    std::getline(f, line);  // header
-    while (std::getline(f, line)) {
-        if (line.empty()) continue;
-        std::istringstream ss(line);
-        std::string rank_s, start_s, end_s, nid_s;
-        std::getline(ss, rank_s,  '\t');
-        std::getline(ss, start_s, '\t');
-        std::getline(ss, end_s,   '\t');
-        std::getline(ss, nid_s,   '\t');
-        Classifier::GenomeRange g;
-        g.start   = std::stoull(start_s);
-        g.end     = std::stoull(end_s);
-        g.node_id = std::stoi(nid_s);
-        genomes.push_back(g);
-    }
-    return true;
-}
-
-// ── Struct de una read con ground-truth ──────────────────────────────────────
-
-struct ReadEntry {
-    int         read_id;
-    int         true_genome_idx;
-    int         true_node_id;
-    std::string sequence;
-};
-
-static bool load_reads(const std::string& path, std::vector<ReadEntry>& reads) {
-    std::ifstream f(path);
-    if (!f) { std::cerr << "No se puede abrir: " << path << "\n"; return false; }
-
-    std::string line;
-    std::getline(f, line);  // header
-    while (std::getline(f, line)) {
-        if (line.empty()) continue;
-        std::istringstream ss(line);
-        std::string id_s, gidx_s, nid_s, seq;
-        std::getline(ss, id_s,   '\t');
-        std::getline(ss, gidx_s, '\t');
-        std::getline(ss, nid_s,  '\t');
-        std::getline(ss, seq,    '\t');
-        ReadEntry e;
-        e.read_id        = std::stoi(id_s);
-        e.true_genome_idx = std::stoi(gidx_s);
-        e.true_node_id   = std::stoi(nid_s);
-        e.sequence       = seq;
-        reads.push_back(std::move(e));
-    }
-    return true;
-}
+using classify_io::ReadEntry;
 
 // ── Categoría de equivalencia ─────────────────────────────────────────────────
 
@@ -255,12 +172,12 @@ int main(int argc, char** argv) {
 
     // ── Cargar árbol filogenético ─────────────────────────────────────────────
     PhyloTree tree;
-    if (!load_tree(tree_path, tree)) return 4;
+    if (!classify_io::load_tree(tree_path, tree)) return 4;
     std::cout << "Árbol cargado: " << tree.size() << " nodos\n";
 
     // ── Cargar rangos de genoma + configurar Classifier ───────────────────────
     std::vector<Classifier::GenomeRange> genome_ranges;
-    if (!load_genomes(genomes_path, genome_ranges)) return 5;
+    if (!classify_io::load_genomes(genomes_path, genome_ranges)) return 5;
 
     Classifier classifier;
     classifier.setup(tree, genome_ranges);
@@ -268,7 +185,7 @@ int main(int argc, char** argv) {
 
     // ── Cargar reads ──────────────────────────────────────────────────────────
     std::vector<ReadEntry> reads;
-    if (!load_reads(reads_path, reads)) return 6;
+    if (!classify_io::load_reads(reads_path, reads)) return 6;
     std::cout << "Reads cargados: " << reads.size() << "\n\n";
 
     // ── Pipeline de clasificación y comparación ───────────────────────────────

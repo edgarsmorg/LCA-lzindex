@@ -12,7 +12,7 @@ namespace lz77tax {
  * El greedy parsing itera sobre las z frases resultantes.
  *
  * Límite de tamaño: usa int32_t internamente → texto máximo 2^31-1 ≈ 2 GB.
- * Para los corpus objetivo (E. coli 108 MB, cere 461 MB) es suficiente.
+ * Cubre la suite sintética de escalado (scaling_10KB … scaling_2GB).
  */
 class LZ77Parser {
 public:

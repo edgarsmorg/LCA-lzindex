@@ -2,151 +2,58 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstdio>
 #include <climits>
 #include <filesystem>
 #include <fstream>
-#include <random>
+#include <numeric>
 #include <string>
 
-#include <sdsl/csa_wt.hpp>
-#include <sdsl/construct_isa.hpp>
-#include <sdsl/construct.hpp>
 #include <sdsl/int_vector.hpp>
-#include <sdsl/util.hpp>
+#include <sdsl/io.hpp>
 
-#include <sr-index/r_csa.h>
-#include <sr-index/construct.h>
-#include <sr-index/config.h>
-#include <sr-index/index_base.h>
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CountOnlyRCSA — subclase de sri::RCSA<> que solo carga/serializa las
-// estructuras necesarias para Count() (Alphabet + PsiCoreRLE).
-// Los samples/marks/mark-to-sample del Locate se omiten completamente:
-//   • No se cargan en loadAllItems() → no consumen RAM.
-//   • No se escriben en serialize()  → serialize_bytes() reporta solo
-//     los ~25 MB reales de Alphabet + PsiRLE por dirección.
-// Locate() queda deshabilitado (stubs); la clase es solo para Count().
-//
-// Nota: la clase está en file scope (no en anonymous namespace) para que
-// sdsl::has_serialize<CountOnlyRCSA>::value sea true y sdsl::size_in_bytes
-// funcione correctamente a través del despacho virtual de serialize().
-// ─────────────────────────────────────────────────────────────────────────────
-
-class CountOnlyRCSA : public sri::RCSA<> {
-    using Base    = sri::RCSA<>;
-    using StrType = typename Alphabet::string_type;
- public:
-    size_type serialize(std::ostream& out, sdsl::structure_tree_node* v,
-                        const std::string& name) const override {
-        auto child = sdsl::structure_tree::add_child(v, name, "CountOnlyRCSA");
-        size_type written = 0;
-        written += this->template serializeItem<Alphabet>(
-            key(ItemKey::ALPHABET), out, child, "alphabet");
-        written += this->template serializeItem<sri::PsiCoreRLE<>>(
-            key(ItemKey::NAVIGATE), out, child, "psi");
-        return written;
-    }
-
- protected:
-    void loadAllItems(TSource& t_source) override {
-        this->template loadItem<Alphabet>(key(ItemKey::ALPHABET), t_source);
-        this->template loadItem<sri::PsiCoreRLE<>>(key(ItemKey::NAVIGATE), t_source, true);
-        // Skip: TSample, TBvMark+rank/select, TMarkToSampleIdx — Count no los usa.
-    }
-
-    void constructIndex(TSource& t_source) override {
-        auto lf      = this->constructLF(t_source);   // también setea this->n_
-        auto sym     = this->constructGetSymbol(t_source);
-        auto is_mt   = this->constructIsRangeEmpty();
-        auto no_init = [](std::size_t) noexcept -> int { return 0; };
-        auto no_upd  = [](auto&&...) noexcept {};
-        auto no_cmp  = [](auto&&...) noexcept {};
-        auto mk_rng  = [](std::size_t n) noexcept -> Range { return {0, n}; };
-
-        using LF_t  = decltype(lf);
-        using Sym_t = decltype(sym);
-        using I_t   = decltype(no_init);
-        using U_t   = decltype(no_upd);
-        using C_t   = decltype(no_cmp);
-        using R_t   = decltype(mk_rng);
-        using E_t   = decltype(is_mt);
-
-        this->index_ = std::make_shared<
-            sri::RIndexBase<StrType, LF_t, U_t, C_t, I_t, Sym_t, R_t, E_t>
-        >(StrType{}, lf, no_upd, no_cmp, this->n_, no_init, sym, mk_rng, is_mt);
-    }
-};
+#include "patricia.h"
+#include "dfuds.h"
+#include "directcodes.h"
 
 namespace lz77tax {
 
-// PIMPL: mantiene los dos RCSA lejos del header (evita ODR por funciones no-inline del sr-index)
-struct LZ77Index::RCSAImpl {
-    CountOnlyRCSA fwd;
-    CountOnlyRCSA rev;
+// ─────────────────────────────────────────────────────────────────────────────
+// TrieImpl — PIMPL que guarda los tries DFUDS y las DAC de skips
+// ─────────────────────────────────────────────────────────────────────────────
+
+struct LZ77Index::TrieImpl {
+    lz77index::basics::dfuds* sst     = nullptr;
+    lz77index::basics::dfuds* rev     = nullptr;
+    lz77index::basics::FTRep* sst_sk  = nullptr;  // skip lengths SST
+    lz77index::basics::FTRep* rev_sk  = nullptr;  // skip lengths rev_trie
+    // bp_hb::data y static_doublebitmap_s::bitmap_data apuntan aqui —
+    // NO se pueden liberar hasta destruir los dfuds.
+    unsigned int*              sst_bm  = nullptr;
+    unsigned int*              rev_bm  = nullptr;
+
+    TrieImpl() = default;
+    ~TrieImpl() {
+        delete sst;  delete rev;
+        if (sst_sk) lz77index::basics::destroyFT(sst_sk);
+        if (rev_sk) lz77index::basics::destroyFT(rev_sk);
+        delete[] sst_bm;  delete[] rev_bm;
+    }
+    TrieImpl(const TrieImpl&) = delete;
+    TrieImpl& operator=(const TrieImpl&) = delete;
 };
 
-LZ77Index::LZ77Index() = default;
+LZ77Index::LZ77Index()  = default;
 LZ77Index::~LZ77Index() = default;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Helpers internos (anonymous namespace)
+// Helpers (anonymous namespace)
 // ─────────────────────────────────────────────────────────────────────────────
 
 namespace {
 
-// ── Build helpers ─────────────────────────────────────────────────────────────
-
-// Escribe `text` a un archivo temporal en `tmp_dir` y devuelve su path.
-std::filesystem::path write_temp_text(const std::string& text,
-                                      const std::filesystem::path& tmp_dir,
-                                      const std::string& suffix) {
-    auto path = tmp_dir / ("lz77_" + suffix + ".txt");
-    std::ofstream f(path, std::ios::binary);
-    f.write(text.data(), text.size());
-    return path;
-}
-
-// Construye un CountOnlyRCSA para `text_path`, extrae ISA desde el cache de sdsl y lo devuelve.
-// config tiene delete_files=true → los archivos intermedios se borran al destruir config.
-sdsl::int_vector<> build_rcsa_and_get_isa(CountOnlyRCSA& rcsa,
-                                           const std::filesystem::path& text_path,
-                                           const std::filesystem::path& cache_dir) {
-    sri::Config config(text_path, cache_dir, sri::SAAlgo::SDSL_LIBDIVSUFSORT,
-                       /*delete_files=*/true);
-    sri::construct(rcsa, text_path.string(), config);
-
-    // ISA no se construye en sri::construct — hacerlo aquí.
-    sdsl::construct_isa(config);
-    sdsl::int_vector<> isa;
-    sdsl::load_from_cache(isa, sdsl::conf::KEY_ISA, config);
-    return isa;
-}
-
-std::filesystem::path make_tmp_dir(const std::string& prefix) {
-    std::mt19937_64 rng(std::random_device{}());
-    auto tmp = std::filesystem::temp_directory_path()
-               / (prefix + "_" + std::to_string(rng()));
-    std::filesystem::create_directories(tmp);
-    return tmp;
-}
-
-// ── Size helper ───────────────────────────────────────────────────────────────
-
-// Cuenta bytes que serialize() escribe llamando directamente al método virtual.
-// Evita sdsl::size_in_bytes que requiere has_serialize<T> vía free function.
-size_t rcsa_bytes(const CountOnlyRCSA& rcsa) {
-    struct NullBuf : std::streambuf {
-        std::streamsize xsputn(const char*, std::streamsize n) override { return n; }
-        int overflow(int c) override { return c; }
-    } buf;
-    std::ostream ns(&buf);
-    return rcsa.serialize(ns, nullptr, "");
-}
-
 // ── Serialization helpers ─────────────────────────────────────────────────────
 
-// bitset<256> no tiene to_ullong() directo: serializa/deserializa como 4×uint64.
 void write_bitset256(std::ostream& out, const std::bitset<256>& bs) {
     for (int w = 0; w < 4; ++w) {
         uint64_t word = 0;
@@ -168,112 +75,160 @@ void read_bitset256(std::istream& in, std::bitset<256>& bs) {
 
 // ── Query helpers ─────────────────────────────────────────────────────────────
 
-// Convierte rango half-open [start, stop) de CountOnlyRCSA::Count a closed [sp, ep].
-// Precondición: sub solo contiene caracteres en el alfabeto del índice.
-bool rcsa_search(const CountOnlyRCSA& rcsa, const std::string& sub,
-                 size_t& sp, size_t& ep) {
-    auto [start, stop] = rcsa.Count(sub);
-    if (start >= stop) return false;
-    sp = start;
-    ep = stop - 1;
-    return true;
-}
-
-// Retorna true si todos los chars de s están en el alfabeto indexado.
 bool in_alphabet(const std::string& s, const std::bitset<256>& alpha) {
     for (unsigned char c : s)
         if (!alpha.test(c)) return false;
     return true;
 }
 
-// ── Range extraction helpers (eliminate duplication across count/locate_*) ────
+// ── Trie search ───────────────────────────────────────────────────────────────
 
-/// Resultado del bloque Special: rangos del patrón completo invertido en la
-/// CSA reversa. Si found=false los campos sp_rev/ep_rev son indeterminados.
-struct SpecialRanges {
-    bool   found  = false;
-    size_t sp_rev = 0;
-    size_t ep_rev = 0;
-};
-
-/// Resultado de un crossing i: rangos para la mitad derecha en la CSA directa
-/// y para la mitad izquierda invertida en la CSA reversa.
-struct CrossingRanges {
-    size_t split_i = 0;   ///< índice de corte i (1..m-1)
-    size_t sp_r    = 0;
-    size_t ep_r    = 0;
-    size_t sp_l    = 0;
-    size_t ep_l    = 0;
-};
-
-/// Busca el patrón completo invertido en la CSA reversa (bloque Special).
-SpecialRanges search_special(const CountOnlyRCSA& csa_rev,
-                              const std::string& rev_p,
-                              const std::bitset<256>& /*alphabet*/) {
-    SpecialRanges sr;
-    sr.found = rcsa_search(csa_rev, rev_p, sr.sp_rev, sr.ep_rev);
-    return sr;
+// Busca `pattern[0..plen-1]` en el SST.
+// Retorna [L,R] 1-indexed (L>R → no encontrado).
+// dfuds no tiene metodos const → toma referencias no-const.
+void search_sst(lz77index::basics::dfuds& sst,
+                lz77index::basics::FTRep* skips,
+                const unsigned char* pattern, unsigned int plen,
+                unsigned int& L, unsigned int& R) {
+    unsigned int node = 1;  // root
+    unsigned int pos  = 0;
+    unsigned int s_pos;
+    while (pos < plen && !sst.inspect(node)) {
+        node = sst.labeled_child(node, pattern[pos], &s_pos);
+        if (node == static_cast<unsigned int>(-1)) { L = 1; R = 0; return; }
+        pos += lz77index::basics::accessFT(skips, s_pos + 1);
+    }
+    L = sst.leftmost_leaf_rank(node);
+    R = sst.rightmost_leaf_rank(node);
 }
 
-/// Itera sobre todos los crossings i=1..m-1 del patrón y llama callback(CrossingRanges)
-/// por cada splitting que tenga rangos válidos en ambas CSAs.
-/// El patrón ya fue validado contra el alfabeto antes de llamar a esta función.
-template<typename Fn>
-void for_each_crossing(const CountOnlyRCSA& csa_fwd,
-                       const CountOnlyRCSA& csa_rev,
-                       const std::string& pattern,
-                       Fn&& callback) {
-    const size_t m = pattern.size();
-    for (size_t i = 1; i < m; ++i) {
-        CrossingRanges cr;
-        cr.split_i = i;
-
-        if (!rcsa_search(csa_fwd, pattern.substr(i), cr.sp_r, cr.ep_r)) continue;
-
-        const std::string left_rev(pattern.rbegin() + static_cast<std::ptrdiff_t>(m - i),
-                                   pattern.rend());
-        if (!rcsa_search(csa_rev, left_rev, cr.sp_l, cr.ep_l)) continue;
-
-        callback(cr);
+// Busca `pattern[0..plen-1]` en el rev_trie.
+void search_rev(lz77index::basics::dfuds& rev,
+                lz77index::basics::FTRep* skips,
+                const unsigned char* pattern, unsigned int plen,
+                unsigned int& L, unsigned int& R) {
+    unsigned int node = 1;
+    unsigned int pos  = 0;
+    unsigned int s_pos;
+    while (pos < plen && !rev.inspect(node)) {
+        node = rev.labeled_child(node, pattern[pos], &s_pos);
+        if (node == static_cast<unsigned int>(-1)) { L = 1; R = 0; return; }
+        pos += lz77index::basics::accessFT(skips, s_pos + 1);
     }
+    L = rev.leftmost_leaf_rank(node);
+    R = rev.rightmost_leaf_rank(node);
+}
+
+// ── Patricia verification ──────────────────────────────────────────────────────
+
+// Verifica que T[occ_pos .. occ_pos+m-1] == pattern.
+// boundary es el texto con centinela almacenado en text_s_.
+bool verify_occurrence(const std::string& text_s,
+                       size_t occ_pos, const std::string& pattern) {
+    const size_t m = pattern.size();
+    if (occ_pos + m > text_s.size()) return false;
+    return text_s.compare(occ_pos, m, pattern) == 0;
 }
 
 }  // namespace
 
 // ─────────────────────────────────────────────────────────────────────────────
-// build() — versión desde texto en memoria (small-scale y benchmark)
+// build() — construye índice desde texto en memoria
 // ─────────────────────────────────────────────────────────────────────────────
 
 void LZ77Index::build(const std::string& text) {
-    const std::string text_s = text + '\0';
-    n_ = text_s.size();
-    LZ77Parsing phrases = LZ77Parser().parse(text_s);
+    text_s_ = text + '\0';
+    n_ = text_s_.size();
+    LZ77Parsing phrases = LZ77Parser().parse(text_s_);
     z_ = phrases.size();
 
     alphabet_.reset();
     for (unsigned char c : text) alphabet_.set(c);
 
-    rcsa_ = std::make_unique<RCSAImpl>();
+    const size_t z1 = z_ - 1;
+    trie_ = std::make_unique<TrieImpl>();
 
-    // Directorios temporales separados para fwd y rev (evitar colisiones de keys).
-    const auto tmp_fwd = make_tmp_dir("lz77fwd");
-    const auto tmp_rev = make_tmp_dir("lz77rev");
+    if (z1 == 0) {
+        // Texto de 1 frase: grilla vacía, tries no necesarios.
+        return;
+    }
 
-    // Texto SIN centinela para sri::construct (lo añade internamente via sdsl).
-    const auto path_fwd = write_temp_text(text, tmp_fwd, "text");
-    const auto isa_fwd  = build_rcsa_and_get_isa(rcsa_->fwd, path_fwd, tmp_fwd);
-    std::filesystem::remove(path_fwd);
-    std::filesystem::remove_all(tmp_fwd);
+    assert(z1 < static_cast<size_t>(std::numeric_limits<unsigned int>::max()));
 
-    const std::string text_rev(text.rbegin(), text.rend());
-    const auto path_rev = write_temp_text(text_rev, tmp_rev, "text");
-    const auto isa_rev  = build_rcsa_and_get_isa(rcsa_->rev, path_rev, tmp_rev);
-    std::filesystem::remove(path_rev);
-    std::filesystem::remove_all(tmp_rev);
+    auto* text_u = const_cast<unsigned char*>(
+        reinterpret_cast<const unsigned char*>(text_s_.data()));
+    const unsigned int tlen = static_cast<unsigned int>(n_);
 
-    grid_.build(phrases, isa_fwd, isa_rev, n_);
+    // ── 1. Construir SST (Patricia sobre frases 1..z-1) ──────────────────────
+    lz77index::patricia pat_sst(text_u, tlen);
+    for (size_t k = 0; k + 1 < z_; ++k)
+        pat_sst.add(static_cast<unsigned int>(phrases[k + 1].start_pos));
 
-    // Liberar la RAM del vector de frases: Grid2D ya extrajo todo lo que necesita.
+    unsigned int* ids       = pat_sst.leafIds();
+    unsigned int  sst_nodes = pat_sst.nodes();
+    unsigned int* sst_bm    = pat_sst.dfuds();
+    unsigned char* sst_lab  = pat_sst.dfuds_labels();
+    unsigned int* sst_sk    = pat_sst.dfuds_skips();
+    trie_->sst    = new lz77index::basics::dfuds(sst_bm, sst_nodes, sst_lab);
+    trie_->sst_sk = lz77index::basics::createFT(sst_sk, sst_nodes);
+    trie_->sst_bm = sst_bm;  // bp_hb::data apunta aqui — no liberar hasta ~TrieImpl
+    delete[] sst_sk;          // createFT copia internamente; sst_sk ya no necesario
+
+    // ── 2. Construir rev_trie (Patricia sobre frases 0..z-2, texto invertido) ─
+    lz77index::patricia pat_rev(text_u, tlen);
+    // Frase 0 es siempre literal: end_0 = 0, width = 1
+    pat_rev.addReverse(0u, 1u);
+    for (size_t k = 1; k + 1 < z_; ++k) {
+        const unsigned int end_k   = static_cast<unsigned int>(
+            phrases[k].start_pos + phrases[k].length);
+        const unsigned int width_k = static_cast<unsigned int>(phrases[k].length + 1);
+        pat_rev.addReverse(end_k, width_k);
+    }
+
+    unsigned int* ids_rev   = pat_rev.leafIds();
+    unsigned int  rev_nodes = pat_rev.nodes();
+    unsigned int* rev_bm    = pat_rev.dfuds();
+    unsigned char* rev_lab  = pat_rev.dfuds_labels();
+    unsigned int* rev_sk    = pat_rev.dfuds_skips();
+    trie_->rev    = new lz77index::basics::dfuds(rev_bm, rev_nodes, rev_lab);
+    trie_->rev_sk = lz77index::basics::createFT(rev_sk, rev_nodes);
+    trie_->rev_bm = rev_bm;  // bp_hb::data apunta aqui — no liberar hasta ~TrieImpl
+    delete[] rev_sk;
+
+    // ── 3. Computar coordenadas de la grilla desde leaf ranks ─────────────────
+    // ids[j]     = insertion_id (= k) de la hoja en SST posicion j (0-indexed)
+    // ids_rev[j] = insertion_id (= k) de la hoja en rev_trie posicion j
+    //
+    // inv_ids_rev[k] = rev_trie rank de frase k
+    //   = j tal que ids_rev[j] == k
+    //   = se obtiene ordenando idx por ids_rev
+
+    // Después del sort: idx[j] = índice preorder en rev_trie de la inserción j.
+    // R[i] = posición preorder (0-indexed) de la inserción ids[i] en el rev_trie
+    //      = idx[ids[i]].
+    std::vector<unsigned int> idx(z1);
+    std::iota(idx.begin(), idx.end(), 0u);
+    std::sort(idx.begin(), idx.end(), [&](unsigned int a, unsigned int b) {
+        return ids_rev[a] < ids_rev[b];
+    });
+
+    // R[i] = rev_trie preorder leaf rank de la frase en SST posicion i
+    // boundaries[i] = start_{k+1} para la frase ids[i]
+    // phrase_lens[i] = total width de la frase ids[i] (= phrases[k].length + 1)
+    std::vector<size_t> R(z1), boundaries(z1), phrase_lens(z1);
+    for (size_t i = 0; i < z1; ++i) {
+        const size_t k = static_cast<size_t>(ids[i]);
+        R[i]           = static_cast<size_t>(idx[k]);
+        boundaries[i]  = phrases[k + 1].start_pos;
+        phrase_lens[i] = phrases[k].length + 1;
+    }
+
+    delete[] ids;
+    delete[] ids_rev;
+
+    // ── 4. Construir grilla con coordenadas trie-based ────────────────────────
+    grid_.build_from_trie_coords(R, boundaries, phrase_lens);
+
     phrases = LZ77Parsing{};
 }
 
@@ -281,12 +236,14 @@ void LZ77Index::build(const std::string& text) {
 // Accesores de tamaño
 // ─────────────────────────────────────────────────────────────────────────────
 
-size_t LZ77Index::csa_fwd_bytes() const {
-    return rcsa_ ? rcsa_bytes(rcsa_->fwd) : 0;
-}
-
-size_t LZ77Index::csa_rev_bytes() const {
-    return rcsa_ ? rcsa_bytes(rcsa_->rev) : 0;
+size_t LZ77Index::trie_bytes() const {
+    if (!trie_) return 0;
+    size_t total = 0;
+    if (trie_->sst)   total += trie_->sst->size();
+    if (trie_->rev)   total += trie_->rev->size();
+    if (trie_->sst_sk) total += lz77index::basics::sizeFT(trie_->sst_sk);
+    if (trie_->rev_sk) total += lz77index::basics::sizeFT(trie_->rev_sk);
+    return total;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -308,22 +265,21 @@ void LZ77Index::save(const std::filesystem::path& prefix) const {
                         std::ios::binary);
         grid_.serialize(f);
     }
-    // 3. RCSAs: usar serialize() existente (escribe Alphabet + PsiRLE en orden)
-    if (rcsa_) {
-        {
-            std::ofstream f(std::filesystem::path(prefix).replace_extension(".rcsa_fwd"),
-                            std::ios::binary);
-            rcsa_->fwd.serialize(f, nullptr, "");
-        }
-        {
-            std::ofstream f(std::filesystem::path(prefix).replace_extension(".rcsa_rev"),
-                            std::ios::binary);
-            rcsa_->rev.serialize(f, nullptr, "");
-        }
+    // 3. Tries: usar FILE* API nativa de uiHRDC
+    if (trie_) {
+        auto trie_path = std::filesystem::path(prefix).replace_extension(".trie");
+        FILE* fp = fopen(trie_path.c_str(), "wb");
+        if (!fp) throw std::runtime_error("No se pudo abrir " + trie_path.string());
+        if (trie_->sst)    trie_->sst->save(fp);
+        if (trie_->sst_sk) lz77index::basics::saveFT(trie_->sst_sk, fp);
+        if (trie_->rev)    trie_->rev->save(fp);
+        if (trie_->rev_sk) lz77index::basics::saveFT(trie_->rev_sk, fp);
+        fclose(fp);
     }
 }
 
-void LZ77Index::load(const std::filesystem::path& prefix) {
+void LZ77Index::load(const std::filesystem::path& prefix, const std::string& text) {
+    text_s_ = text + '\0';
     // 1. Meta
     {
         std::ifstream f(std::filesystem::path(prefix).replace_extension(".meta"),
@@ -338,17 +294,17 @@ void LZ77Index::load(const std::filesystem::path& prefix) {
                         std::ios::binary);
         grid_.load(f);
     }
-    // 3. RCSAs: load(istream&) hereda de RCSA<> y llama setupKeyNames+loadAllItems+constructIndex
-    rcsa_ = std::make_unique<RCSAImpl>();
-    {
-        std::ifstream f(std::filesystem::path(prefix).replace_extension(".rcsa_fwd"),
-                        std::ios::binary);
-        rcsa_->fwd.load(f);
-    }
-    {
-        std::ifstream f(std::filesystem::path(prefix).replace_extension(".rcsa_rev"),
-                        std::ios::binary);
-        rcsa_->rev.load(f);
+    // 3. Tries
+    trie_ = std::make_unique<TrieImpl>();
+    if (z_ > 1) {
+        auto trie_path = std::filesystem::path(prefix).replace_extension(".trie");
+        FILE* fp = fopen(trie_path.c_str(), "rb");
+        if (!fp) throw std::runtime_error("No se pudo abrir " + trie_path.string());
+        trie_->sst    = lz77index::basics::dfuds::load(fp);
+        trie_->sst_sk = lz77index::basics::loadFT(fp);
+        trie_->rev    = lz77index::basics::dfuds::load(fp);
+        trie_->rev_sk = lz77index::basics::loadFT(fp);
+        fclose(fp);
     }
 }
 
@@ -358,26 +314,66 @@ void LZ77Index::load(const std::filesystem::path& prefix) {
 
 size_t LZ77Index::count(const std::string& pattern) const {
     const size_t m = pattern.size();
-
-    if (m < 2 || grid_.point_count() == 0 || !rcsa_) return 0;
+    if (m < 2 || grid_.point_count() == 0 || !trie_) return 0;
     if (!in_alphabet(pattern, alphabet_)) return 0;
 
-    size_t total = 0;
     const std::string rev_p(pattern.rbegin(), pattern.rend());
+    const auto* rev_u  = reinterpret_cast<const unsigned char*>(rev_p.data());
+    const auto* pat_u  = reinterpret_cast<const unsigned char*>(pattern.data());
 
-    // ── Special ───────────────────────────────────────────────────────────────
-    const auto sr = search_special(rcsa_->rev, rev_p, alphabet_);
-    if (sr.found) {
-        const auto sp = grid_.query_special(sr.sp_rev, sr.ep_rev, m);
-        total += sp.count;
+    size_t total = 0;
+
+    // ── Special: patrón completo en rev_trie, buscamos frases que lo contengan ─
+    if (trie_->rev) {
+        unsigned int Ll, Lr;
+        search_rev(*trie_->rev, trie_->rev_sk, rev_u,
+                   static_cast<unsigned int>(m), Ll, Lr);
+        if (Lr >= Ll) {
+            const auto sp = grid_.query_special_direct(Ll - 1, Lr - 1, m);
+            if (sp.count > 0) {
+                // Verificar una ocurrencia representante
+                if (sp.occ_min_pos != SIZE_MAX &&
+                    verify_occurrence(text_s_, sp.occ_min_pos, pattern))
+                    total += sp.count;
+            }
+        }
     }
 
-    // ── Crossings ─────────────────────────────────────────────────────────────
-    for_each_crossing(rcsa_->fwd, rcsa_->rev, pattern,
-        [&](const CrossingRanges& cr) {
-            const auto [cnt, pts] = grid_.query(cr.sp_r, cr.ep_r, cr.sp_l, cr.ep_l);
-            total += cnt;
-        });
+    // ── Crossings: split P[0..i-1] | P[i..m-1] para i=1..m-1 ────────────────
+    for (size_t i = 1; i < m; ++i) {
+        // Mitad derecha P[i..m-1] en SST
+        unsigned int Rl, Rr;
+        search_sst(*trie_->sst, trie_->sst_sk,
+                   pat_u + i, static_cast<unsigned int>(m - i), Rl, Rr);
+        if (Rr < Rl) continue;
+
+        // Mitad izquierda invertida en rev_trie
+        const std::string left_rev(pattern.rbegin() + static_cast<std::ptrdiff_t>(m - i),
+                                   pattern.rend());
+        const auto* lrev_u = reinterpret_cast<const unsigned char*>(left_rev.data());
+        unsigned int Ll, Lr;
+        search_rev(*trie_->rev, trie_->rev_sk,
+                   lrev_u, static_cast<unsigned int>(i), Ll, Lr);
+        if (Lr < Ll) continue;
+
+        const auto res = grid_.query_direct(Rl - 1, Rr - 1, Ll - 1, Lr - 1);
+        if (res.first == 0) continue;
+
+        // Contar puntos validos: phrase_total_len >= i (ocurrencia empieza en frase k).
+        // Patricia: una verificacion basta para confirmar todo el rango.
+        bool verified = false;
+        size_t valid_count = 0;
+        for (const auto& [wt_idx, y_rel] : res.second) {
+            if (grid_.phrase_total_len(wt_idx) < i) continue;
+            ++valid_count;
+            if (!verified) {
+                const size_t boundary = grid_.text_pos(wt_idx);
+                if (boundary >= i && verify_occurrence(text_s_, boundary - i, pattern))
+                    verified = true;
+            }
+        }
+        if (verified) total += valid_count;
+    }
 
     return total;
 }
@@ -388,124 +384,106 @@ size_t LZ77Index::count(const std::string& pattern) const {
 
 std::pair<size_t, size_t> LZ77Index::locate_extremal(const std::string& pattern) const {
     const size_t m = pattern.size();
-    if (m < 2 || grid_.point_count() == 0) return {SIZE_MAX, 0};
+    if (m < 2 || grid_.point_count() == 0 || !trie_) return {SIZE_MAX, 0};
     if (!in_alphabet(pattern, alphabet_)) return {SIZE_MAX, 0};
+
+    const std::string rev_p(pattern.rbegin(), pattern.rend());
+    const auto* rev_u  = reinterpret_cast<const unsigned char*>(rev_p.data());
+    const auto* pat_u  = reinterpret_cast<const unsigned char*>(pattern.data());
 
     size_t pos_min = SIZE_MAX, pos_max = 0;
     bool found = false;
 
-    const std::string rev_p(pattern.rbegin(), pattern.rend());
-
     // ── Special ───────────────────────────────────────────────────────────────
-    const auto sr = search_special(rcsa_->rev, rev_p, alphabet_);
-    if (sr.found) {
-        const auto sp = grid_.query_special(sr.sp_rev, sr.ep_rev, m);
-        if (sp.count > 0) {
-            if (sp.occ_min_pos < pos_min) pos_min = sp.occ_min_pos;
-            if (sp.occ_max_pos > pos_max) pos_max = sp.occ_max_pos;
-            found = true;
+    if (trie_->rev) {
+        unsigned int Ll, Lr;
+        search_rev(*trie_->rev, trie_->rev_sk, rev_u,
+                   static_cast<unsigned int>(m), Ll, Lr);
+        if (Lr >= Ll) {
+            const auto sp = grid_.query_special_direct(Ll - 1, Lr - 1, m);
+            if (sp.count > 0 && sp.occ_min_pos != SIZE_MAX) {
+                if (verify_occurrence(text_s_, sp.occ_min_pos, pattern)) {
+                    if (sp.occ_min_pos < pos_min) pos_min = sp.occ_min_pos;
+                    if (sp.occ_max_pos > pos_max) pos_max = sp.occ_max_pos;
+                    found = true;
+                }
+            }
         }
     }
 
     // ── Crossings ─────────────────────────────────────────────────────────────
-    for_each_crossing(rcsa_->fwd, rcsa_->rev, pattern,
-        [&](const CrossingRanges& cr) {
-            const size_t i = cr.split_i;
+    for (size_t i = 1; i < m; ++i) {
+        unsigned int Rl, Rr;
+        search_sst(*trie_->sst, trie_->sst_sk,
+                   pat_u + i, static_cast<unsigned int>(m - i), Rl, Rr);
+        if (Rr < Rl) continue;
 
-            const auto rmin = grid_.query_min_2d(cr.sp_r, cr.ep_r, cr.sp_l, cr.ep_l);
-            if (rmin.count == 0) return;
+        const std::string left_rev(pattern.rbegin() + static_cast<std::ptrdiff_t>(m - i),
+                                   pattern.rend());
+        const auto* lrev_u = reinterpret_cast<const unsigned char*>(left_rev.data());
+        unsigned int Ll, Lr;
+        search_rev(*trie_->rev, trie_->rev_sk,
+                   lrev_u, static_cast<unsigned int>(i), Ll, Lr);
+        if (Lr < Ll) continue;
 
-            const auto rmax = grid_.query_max_2d(cr.sp_r, cr.ep_r, cr.sp_l, cr.ep_l);
+        auto valid_min_occ = [&](Grid2D::MinResult r, size_t& occ) {
+            if (r.count == 0 || r.wt_idx == SIZE_MAX) return false;
+            if (grid_.phrase_total_len(r.wt_idx) < i || r.boundary_min < i) return false;
+            occ = r.boundary_min - i;
+            return verify_occurrence(text_s_, occ, pattern);
+        };
+        auto valid_max_occ = [&](Grid2D::MaxResult r, size_t& occ) {
+            if (r.count == 0 || r.wt_idx == SIZE_MAX) return false;
+            if (grid_.phrase_total_len(r.wt_idx) < i || r.boundary_max < i) return false;
+            occ = r.boundary_max - i;
+            return verify_occurrence(text_s_, occ, pattern);
+        };
 
-            if (rmin.boundary_min >= i) {
-                const size_t p_min = rmin.boundary_min - i;
-                if (p_min < pos_min) pos_min = p_min;
+        size_t min_occ = SIZE_MAX;
+        const auto rmin = grid_.query_min_direct(Rl - 1, Rr - 1, Ll - 1, Lr - 1);
+        if (!valid_min_occ(rmin, min_occ)) {
+            min_occ = SIZE_MAX;
+            const auto res = grid_.query_direct(Rl - 1, Rr - 1, Ll - 1, Lr - 1);
+            for (const auto& [wt_idx, y_rel] : res.second) {
+                (void)y_rel;
+                if (grid_.phrase_total_len(wt_idx) < i) continue;
+                const size_t boundary = grid_.text_pos(wt_idx);
+                if (boundary < i) continue;
+                const size_t occ = boundary - i;
+                if (occ < min_occ && verify_occurrence(text_s_, occ, pattern))
+                    min_occ = occ;
             }
-            if (rmax.count > 0 && rmax.boundary_max >= i) {
-                const size_t p_max = rmax.boundary_max - i;
-                if (p_max > pos_max) pos_max = p_max;
+        }
+
+        size_t max_occ = 0;
+        bool has_max = false;
+        const auto rmax = grid_.query_max_direct(Rl - 1, Rr - 1, Ll - 1, Lr - 1);
+        if (valid_max_occ(rmax, max_occ)) {
+            has_max = true;
+        } else {
+            const auto res = grid_.query_direct(Rl - 1, Rr - 1, Ll - 1, Lr - 1);
+            for (const auto& [wt_idx, y_rel] : res.second) {
+                (void)y_rel;
+                if (grid_.phrase_total_len(wt_idx) < i) continue;
+                const size_t boundary = grid_.text_pos(wt_idx);
+                if (boundary < i) continue;
+                const size_t occ = boundary - i;
+                if (verify_occurrence(text_s_, occ, pattern) && (!has_max || occ > max_occ)) {
+                    max_occ = occ;
+                    has_max = true;
+                }
             }
+        }
+
+        if (min_occ != SIZE_MAX) {
+            if (min_occ < pos_min) pos_min = min_occ;
+            if (has_max && max_occ > pos_max) pos_max = max_occ;
             found = true;
-        });
+        }
+    }
 
     return found ? std::make_pair(pos_min, pos_max)
                  : std::make_pair(SIZE_MAX, size_t(0));
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// locate_min()
-// ─────────────────────────────────────────────────────────────────────────────
-
-size_t LZ77Index::locate_min(const std::string& pattern) const {
-    const size_t m = pattern.size();
-    if (m < 2 || grid_.point_count() == 0) return SIZE_MAX;
-    if (!in_alphabet(pattern, alphabet_)) return SIZE_MAX;
-
-    size_t pos_min = SIZE_MAX;
-    const std::string rev_p(pattern.rbegin(), pattern.rend());
-
-    // ── Special ───────────────────────────────────────────────────────────────
-    const auto sr = search_special(rcsa_->rev, rev_p, alphabet_);
-    if (sr.found) {
-        const auto sp = grid_.query_special(sr.sp_rev, sr.ep_rev, m);
-        if (sp.count > 0 && sp.occ_min_pos < pos_min)
-            pos_min = sp.occ_min_pos;
-    }
-
-    // ── Crossings ─────────────────────────────────────────────────────────────
-    for_each_crossing(rcsa_->fwd, rcsa_->rev, pattern,
-        [&](const CrossingRanges& cr) {
-            const size_t i = cr.split_i;
-
-            const auto r = grid_.query_min_2d(cr.sp_r, cr.ep_r, cr.sp_l, cr.ep_l);
-            if (r.count == 0 || r.boundary_min < i) return;
-
-            const size_t p = r.boundary_min - i;
-            if (p < pos_min) pos_min = p;
-        });
-
-    return pos_min;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// locate_max()
-// ─────────────────────────────────────────────────────────────────────────────
-
-size_t LZ77Index::locate_max(const std::string& pattern) const {
-    const size_t m = pattern.size();
-    if (m < 2 || grid_.point_count() == 0) return SIZE_MAX;
-    if (!in_alphabet(pattern, alphabet_)) return SIZE_MAX;
-
-    size_t pos_max = 0;
-    bool found = false;
-    const std::string rev_p(pattern.rbegin(), pattern.rend());
-
-    // ── Special ───────────────────────────────────────────────────────────────
-    const auto sr = search_special(rcsa_->rev, rev_p, alphabet_);
-    if (sr.found) {
-        const auto sp = grid_.query_special(sr.sp_rev, sr.ep_rev, m);
-        if (sp.count > 0 && sp.occ_max_pos > pos_max) {
-            pos_max = sp.occ_max_pos;
-            found = true;
-        }
-    }
-
-    // ── Crossings ─────────────────────────────────────────────────────────────
-    for_each_crossing(rcsa_->fwd, rcsa_->rev, pattern,
-        [&](const CrossingRanges& cr) {
-            const size_t i = cr.split_i;
-
-            const auto r = grid_.query_max_2d(cr.sp_r, cr.ep_r, cr.sp_l, cr.ep_l);
-            if (r.count == 0 || r.boundary_max < i) return;
-
-            const size_t p = r.boundary_max - i;
-            if (!found || p > pos_max) {
-                pos_max = p;
-                found = true;
-            }
-        });
-
-    return found ? pos_max : SIZE_MAX;
 }
 
 }  // namespace lz77tax

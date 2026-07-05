@@ -1,22 +1,29 @@
 #!/bin/bash
 
-# Script para descargar Pizza&Chili repetitive corpus
+# Descarga (opcional) un corpus del Pizza&Chili Repetitive Corpus.
 # https://pizzachili.dcc.uchile.cl/repcorpus.html
+#
+# NOTA: la evaluación de la memoria NO usa corpus reales de Pizza&Chili, sino
+# los datasets sintéticos de copias mutadas generados por gen_bench_datasets.py:
+#   python3 scripts/gen_bench_datasets.py --manifest bench/datasets_scaling.json --out data/scaling
+# Este script queda solo como utilidad para experimentos ad-hoc.
+#
+# Uso: scripts/download_corpus.sh [dest_root] [corpus_name]
+#   dest_root    raíz donde crear data/ (default: .)
+#   corpus_name  nombre en repcorpus/real (default: cere)
 
 set -e
 
 DATA_DIR="${1:-.}/data"
+CORPUS="${2:-cere}"
 mkdir -p "$DATA_DIR"
 
-echo "Descargando corpus del Pizza&Chili Repetitive..."
+echo "Descargando '$CORPUS' del Pizza&Chili Repetitive Corpus..."
+wget -O "$DATA_DIR/$CORPUS.gz" \
+  "https://pizzachili.dcc.uchile.cl/repcorpus/real/$CORPUS.gz" 2>&1 | tail -5
 
-# Escherichia_coli (~108 MB)
-echo "Descargando Escherichia_coli..."
-wget -O "$DATA_DIR/Escherichia_coli.gz" \
-  "https://pizzachili.dcc.uchile.cl/repcorpus/real/Escherichia_coli.gz" 2>&1 | tail -5
-
-echo "Descomprimiendo Escherichia_coli..."
-gunzip -f "$DATA_DIR/Escherichia_coli.gz"
+echo "Descomprimiendo '$CORPUS'..."
+gunzip -f "$DATA_DIR/$CORPUS.gz"
 
 echo "✓ Corpus descargado en $DATA_DIR"
-ls -lh "$DATA_DIR"/Escherichia_coli
+ls -lh "$DATA_DIR/$CORPUS"

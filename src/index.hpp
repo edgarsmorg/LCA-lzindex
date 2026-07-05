@@ -20,6 +20,10 @@ namespace lz77tax {
  *
  * Para clasificación taxonómica, las posiciones extremales (min/max) de estas
  * ocurrencias primarias son suficientes para determinar el LCA correcto.
+ *
+ * El índice usa tries Patricia DFUDS (Kreft–Navarro) para búsqueda en ambas
+ * direcciones. El texto original debe estar disponible en query-time para
+ * verificar los saltos Patricia y evitar falsos positivos.
  */
 class LZ77Index {
 public:
@@ -29,7 +33,8 @@ public:
     // ── Interfaz small-scale / tests (≤ ~500 MB) ─────────────────────────────
     /**
      * Construye el índice completo desde el texto crudo.
-     * Internamente añade '\0' como centinela, parsea, construye grid y CSAs.
+     * Internamente añade '\0' como centinela, parsea, construye grid y tries.
+     * El texto se almacena internamente para verificación Patricia en queries.
      *
      * @param text  Texto sin centinela (e.g. ADN puro, sin '\0')
      */
@@ -39,60 +44,30 @@ public:
     // ── Persistencia ──────────────────────────────────────────────────────────
     /**
      * Guarda el índice a disco en varios archivos con prefijo dado.
-     * Escribe: <prefix>.meta, <prefix>.grid, <prefix>.rcsa_fwd, <prefix>.rcsa_rev
+     * Escribe: <prefix>.meta, <prefix>.grid, <prefix>.trie
      */
     void save(const std::filesystem::path& prefix) const;
 
     /**
      * Carga el índice desde los archivos generados por save().
-     * La instancia debe estar vacía (recién construida).
+     * Requiere el texto original para verificación Patricia en queries.
+     *
+     * @param prefix    Prefijo de archivos (mismo que en save())
+     * @param text      Texto original sin centinela (se usa para verificación)
      */
-    void load(const std::filesystem::path& prefix);
+    void load(const std::filesystem::path& prefix, const std::string& text);
 
     // ── Query ─────────────────────────────────────────────────────────────────
     /**
      * Cuenta ocurrencias primarias de pattern.
-     *
-     * Complejidad: O(m² · t_ψ + occ · log z)
-     * donde m=|pattern|, t_ψ = intervalo de muestreo del CSA, occ = resultado.
-     *
-     * Retorna 0 si pattern está vacío, tiene longitud 1, o el índice está vacío.
      */
     size_t count(const std::string& pattern) const;
 
     /**
-     * Localiza la posición mínima y máxima entre todas las ocurrencias primarias
-     * de pattern (aquellas que cruzan al menos un boundary de frase).
-     *
-     * Retorna {pos_min, pos_max} como posiciones de inicio del patrón en el texto.
-     * Retorna {SIZE_MAX, 0} si no hay ocurrencias primarias (pattern no existe,
-     * longitud < 2, o todas las ocurrencias caen dentro de una sola frase).
-     *
-     * Uso para clasificación taxonómica:
-     *   auto [lo, hi] = idx.locate_extremal(pattern);
-     *   int lca_node  = classifier.classify_extremal(lo, hi);
-     *
-     * Complejidad: O(m² · t_ψ + m · log² z) — usa query_min_2d + query_max_2d,
-     * sin enumerar puntos. Más eficiente que la versión anterior O(occ_prim · log z).
+     * Localiza la posición mínima y máxima entre todas las ocurrencias primarias.
+     * Retorna {SIZE_MAX, 0} si no hay ocurrencias primarias.
      */
     std::pair<size_t, size_t> locate_extremal(const std::string& pattern) const;
-
-    /**
-     * Posición mínima entre ocurrencias primarias de pattern.
-     *
-     * Complejidad: O(m² · t_ψ + m · log² z) — no enumera puntos.
-     * Retorna SIZE_MAX si no hay ocurrencias primarias.
-     */
-    size_t locate_min(const std::string& pattern) const;
-
-    /**
-     * Posición máxima entre ocurrencias primarias de pattern.
-     *
-     * Simétrico a locate_min() usando WmMaxRmq (wavelet matrix) por nivel.
-     * Complejidad: O(m² · t_ψ + m · log² z) — no enumera puntos.
-     * Retorna SIZE_MAX si no hay ocurrencias primarias.
-     */
-    size_t locate_max(const std::string& pattern) const;
 
     // ── Accesores ─────────────────────────────────────────────────────────────
     /// Tamaño del texto indexado (incluyendo centinela '\0')
@@ -104,18 +79,20 @@ public:
     /// Número de puntos en la grilla (= z-1 para z frases)
     size_t grid_points()  const { return grid_.point_count(); }
 
-    const Grid2D&      grid()    const { return grid_; }
-    size_t csa_fwd_bytes()       const;
-    size_t csa_rev_bytes()       const;
+    const Grid2D& grid() const { return grid_; }
+
+    /// Bytes de las estructuras de tries (SST + rev_trie + DAC skips)
+    size_t trie_bytes() const;
 
 private:
-    struct RCSAImpl;              // PIMPL: definido en index.cpp (r_csa.h solo allí)
+    struct TrieImpl;               // PIMPL: dfuds* sst + rev_trie + FTRep* skips
 
     Grid2D                     grid_;
     size_t                     n_ = 0;
-    size_t                     z_ = 0;       ///< número de frases LZ77 (cacheado post-build)
-    std::bitset<256>           alphabet_{};  ///< chars presentes en el texto indexado
-    std::unique_ptr<RCSAImpl>  rcsa_;
+    size_t                     z_ = 0;
+    std::bitset<256>           alphabet_{};
+    std::string                text_s_;           ///< texto con centinela (para verificación Patricia)
+    mutable std::unique_ptr<TrieImpl>  trie_;  // mutable: dfuds no tiene metodos const
 };
 
 }  // namespace lz77tax

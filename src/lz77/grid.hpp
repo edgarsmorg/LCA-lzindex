@@ -1,6 +1,7 @@
 #pragma once
 
 #include "phrase.hpp"
+#include "../wavelet/wm_shared.hpp"
 #include "../wavelet/wm_rmq_min.hpp"
 
 #include <cstddef>
@@ -9,7 +10,6 @@
 #include <utility>
 #include <vector>
 
-#include <sdsl/wt_int.hpp>
 #include <sdsl/sd_vector.hpp>
 #include <sdsl/int_vector.hpp>
 #include <sdsl/suffix_arrays.hpp>
@@ -26,12 +26,12 @@ namespace lz77tax {
  *   donde end_k = start_{k+1} - 1 = posicion del next_char de la frase k
  *
  * Internamente se almacena como:
- *   wt_    : wt_int<> sobre R[0..z-2] donde R[rank_fwd(X_k)] = rank_rev(Y_k)
+ *   wm_    : wm_int<> sobre R[0..z-2] donde R[rank_fwd(X_k)] = rank_rev(Y_k)
  *   bv_fwd_: sd_vector con 1s en las posiciones X_k del SA global
  *   bv_rev_: sd_vector con 1s en las posiciones Y_k del rev-SA global
  *
  * Los bitvectors convierten rangos BWT globales [sp,ep] a rangos relativos
- * [rank(sp), rank(ep+1)-1] sobre el wt_, sin materializar SA ni ISA completos
+ * [rank(sp), rank(ep+1)-1] sobre la wm_, sin materializar SA ni ISA completos
  * en la consulta.
  *
  * ESCALA: la interfaz de produccion recibe csa_wt (FM-index ya construido por
@@ -83,8 +83,8 @@ public:
      */
     using RangeResult = std::pair<
         size_t,
-        std::vector<std::pair<sdsl::wt_int<>::value_type,
-                              sdsl::wt_int<>::size_type>>>;
+        std::vector<std::pair<sdsl::wm_int<>::value_type,
+                              sdsl::wm_int<>::size_type>>>;
 
     RangeResult query(size_t sp_right, size_t ep_right,
                       size_t sp_left,  size_t ep_left) const;
@@ -98,6 +98,7 @@ public:
     struct MinResult {
         size_t count;        ///< 0 si rectangulo vacio
         size_t boundary_min; ///< minimo start_{k+1}; SIZE_MAX si count==0
+        size_t wt_idx;       ///< indice del punto extremal; SIZE_MAX si count==0
     };
 
     MinResult query_min_2d(size_t sp_right, size_t ep_right,
@@ -115,10 +116,19 @@ public:
     struct MaxResult {
         size_t count;        ///< 0 si rectangulo vacio
         size_t boundary_max; ///< maximo start_{k+1}; 0 si count==0
+        size_t wt_idx;       ///< indice del punto extremal; SIZE_MAX si count==0
     };
 
     MaxResult query_max_2d(size_t sp_right, size_t ep_right,
                            size_t sp_left,  size_t ep_left) const;
+
+    MinResult query_min_filtered(size_t x_lo, size_t x_hi,
+                                 size_t y_lo, size_t y_hi,
+                                 size_t min_phrase_len) const;
+
+    MaxResult query_max_filtered(size_t x_lo, size_t x_hi,
+                                 size_t y_lo, size_t y_hi,
+                                 size_t min_phrase_len) const;
 
     /**
      * Consulta especial para patrones end-aligned.
@@ -135,18 +145,20 @@ public:
 
     // Accesores
     /// Numero de puntos en la grilla (= z-1 para z frases)
-    size_t point_count() const { return wt_.size(); }
+    size_t point_count() const { return wm_.size(); }
 
-    const sdsl::wt_int<>&    wt()         const { return wt_; }
+    const SharedWm&          wm()         const { return wm_; }
     const sdsl::sd_vector<>& bv_fwd()    const { return bv_fwd_; }
     const sdsl::sd_vector<>& bv_rev()    const { return bv_rev_; }
     const WmMinRmq&          wm_min_rmq()  const { return wm_min_rmq_; }
     const WmMaxRmq&          wm_max_rmq()  const { return wm_max_rmq_; }
     /// Posicion en el texto del boundary k+1 para el punto con indice WT wt_idx.
     size_t text_pos(size_t wt_idx) const { return text_pos_[wt_idx]; }
+    /// Total de caracteres de la frase k para el punto con indice WT wt_idx (= length + 1).
+    size_t phrase_total_len(size_t wt_idx) const { return phrase_total_len_[wt_idx]; }
 
     struct SizeBreakdown {
-        size_t wt;
+        size_t wm;
         size_t bv_fwd, bv_rev;
         size_t rank_fwd, rank_rev;
         size_t text_pos;
@@ -160,6 +172,35 @@ public:
     size_t serialize(std::ostream& out) const;
     void   load(std::istream& in);
 
+    // ── API directa para coordenadas ya relativas (camino de produccion con tries) ──────────
+
+    /**
+     * Construye la grilla desde coordenadas ya relativas (trie-based).
+     *
+     * @param R           R[i] = rev_trie rank (0-indexed) del punto en SST posicion i
+     * @param boundaries  boundaries[i] = start_{k+1} para el punto en SST posicion i
+     * @param phrase_lens phrase_lens[i] = total width de la frase k para ese punto
+     */
+    void build_from_trie_coords(const std::vector<size_t>& R,
+                                const std::vector<size_t>& boundaries,
+                                const std::vector<size_t>& phrase_lens);
+
+    /// Consulta rectangular con rangos ya relativos (0-indexed inclusivos).
+    /// Llamada desde el path de produccion con tries; NO usa bv_fwd_/bv_rev_.
+    RangeResult query_direct(size_t x_lo, size_t x_hi,
+                             size_t y_lo, size_t y_hi) const;
+
+    /// Consulta extremal minima con rangos ya relativos.
+    MinResult query_min_direct(size_t x_lo, size_t x_hi,
+                               size_t y_lo, size_t y_hi) const;
+
+    /// Consulta extremal maxima con rangos ya relativos.
+    MaxResult query_max_direct(size_t x_lo, size_t x_hi,
+                               size_t y_lo, size_t y_hi) const;
+
+    /// Consulta especial (end-aligned) con rango Y ya relativo (0-indexed).
+    SpecialResult query_special_direct(size_t y_lo, size_t y_hi, size_t plen) const;
+
     // rank_fwd_/rank_rev_ guardan punteros raw a bv_fwd_/bv_rev_: no es seguro
     // copiar ni mover Grid2D con los constructores implicitos. Prohibimos copia;
     // si en el futuro se necesita mover, implementar con sdsl::util::init_support.
@@ -168,7 +209,7 @@ public:
     Grid2D& operator=(const Grid2D&) = delete;
 
 private:
-    sdsl::wt_int<>                  wt_;
+    SharedWm                        wm_;
     sdsl::sd_vector<>               bv_fwd_;
     sdsl::sd_vector<>               bv_rev_;
     sdsl::sd_vector<>::rank_1_type  rank_fwd_;
@@ -183,8 +224,14 @@ private:
                            const std::vector<size_t>& phrase_lens,
                            size_t n);
 
+    // Nucleo compartido de construccion (sin depender de bv_fwd_/bv_rev_).
+    // R[j] y boundaries[j]/phrase_lens[j] ya estan en orden WT (j=0..z1-1).
+    void build_core(const std::vector<size_t>& R,
+                    const std::vector<size_t>& boundaries,
+                    const std::vector<size_t>& phrase_lens);
+
     // Convierte rangos BWT globales [sp_r,ep_r] x [sp_l,ep_l] a rangos relativos
-    // [lb, rb-1] x [vlb, vrb-1] sobre wt_. Devuelve false si el rectangulo es vacio.
+    // [lb, rb-1] x [vlb, vrb-1] sobre wm_. Devuelve false si el rectangulo es vacio.
     bool clamp_ranges(size_t sp_r, size_t ep_r,
                       size_t sp_l, size_t ep_l,
                       size_t& lb, size_t& rb,

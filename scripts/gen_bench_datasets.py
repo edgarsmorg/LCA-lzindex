@@ -57,6 +57,95 @@ def build_patterns(spec, text):
     return patterns
 
 
+# ── Artefactos filogenéticos para datasets mutated_copies ─────────────────────
+# Cada copia mutada es un genoma = hoja de un árbol binario balanceado. El orden
+# izquierda→derecha de las hojas coincide con el orden de concatenación (= orden
+# DFS), requisito del diseño primary-only del LZ77-index.
+
+def build_balanced_tree(copies):
+    """Árbol binario balanceado sobre `copies` hojas.
+
+    Devuelve (nodes, rank_to_node, root_id) donde:
+      nodes        — lista de dicts {id, parent, genome_idx} en orden de id (0..N-1);
+                     genome_idx = rank de la hoja, o -1 para nodos internos.
+      rank_to_node — rank de genoma (0..copies-1) → node_id de su hoja.
+    Los node_id son secuenciales 0..N-1 (requisito de PhyloTree::build), y todo
+    padre tiene id menor que sus hijos.
+    """
+    nodes = []
+    rank_to_node = [None] * copies
+    counter = [0]
+
+    def new_id():
+        i = counter[0]
+        counter[0] += 1
+        return i
+
+    def build(lo, hi, parent):
+        nid = new_id()
+        if hi - lo == 1:
+            nodes.append({"id": nid, "parent": parent, "genome_idx": lo})
+            rank_to_node[lo] = nid
+        else:
+            nodes.append({"id": nid, "parent": parent, "genome_idx": -1})
+            mid = (lo + hi) // 2
+            build(lo, mid, nid)
+            build(mid, hi, nid)
+        return nid
+
+    root = build(0, copies, -1)
+    return nodes, rank_to_node, root
+
+
+def write_tree_tsv(path, nodes):
+    lines = ["node_id\tparent_id\tname\tgenome_idx"]
+    for n in nodes:
+        gidx = n["genome_idx"]
+        name = f"genome_{gidx}" if gidx >= 0 else f"internal_{n['id']}"
+        lines.append(f"{n['id']}\t{n['parent']}\t{name}\t{gidx}")
+    path.write_text("\n".join(lines) + "\n", encoding="ascii")
+
+
+def write_genomes_tsv(path, genome_len, copies, rank_to_node):
+    """Rangos contiguos [rank*genome_len, (rank+1)*genome_len), sin separador."""
+    lines = ["leaf_dfs_rank\tstart\tend\tnode_id"]
+    for rank in range(copies):
+        start = rank * genome_len
+        end = start + genome_len
+        lines.append(f"{rank}\t{start}\t{end}\t{rank_to_node[rank]}")
+    path.write_text("\n".join(lines) + "\n", encoding="ascii")
+
+
+def write_reads_tsv(path, spec, text, genome_len, copies, rank_to_node):
+    rng = random.Random(int(spec.get("seed", 1)) + 7000003)
+    n_reads = int(spec.get("n_reads", 2000))
+    read_len = int(spec.get("read_len", 250))
+    snp_rate = float(spec.get("read_mut_rate", 0.01))
+
+    lines = ["read_id\ttrue_genome_idx\ttrue_node_id\tsequence"]
+    for i in range(n_reads):
+        rank = rng.randint(0, copies - 1)
+        g_start = rank * genome_len
+        if genome_len <= read_len:
+            frag_start, frag_len = g_start, genome_len
+        else:
+            frag_start = g_start + rng.randint(0, genome_len - read_len)
+            frag_len = read_len
+        seq = mutate_text(rng, text[frag_start:frag_start + frag_len], snp_rate)
+        lines.append(f"{i}\t{rank}\t{rank_to_node[rank]}\t{seq}")
+    path.write_text("\n".join(lines) + "\n", encoding="ascii")
+
+
+def write_phylo_artifacts(spec, text, out_dir):
+    """Para mutated_copies: emite tree.tsv, genomes.tsv y reads.tsv."""
+    genome_len = int(spec["genome_len"])
+    copies = int(spec["copies"])
+    nodes, rank_to_node, _ = build_balanced_tree(copies)
+    write_tree_tsv(out_dir / "tree.tsv", nodes)
+    write_genomes_tsv(out_dir / "genomes.tsv", genome_len, copies, rank_to_node)
+    write_reads_tsv(out_dir / "reads.tsv", spec, text, genome_len, copies, rank_to_node)
+
+
 def generate_dataset(spec, out_root):
     name = spec["name"]
     out_dir = out_root / name
@@ -67,6 +156,11 @@ def generate_dataset(spec, out_root):
 
     (out_dir / "reference.txt").write_text(text, encoding="ascii")
     (out_dir / "patterns.txt").write_text("\n".join(patterns) + "\n", encoding="ascii")
+
+    # Artefactos filogenéticos solo para mutated_copies (tienen estructura de genomas).
+    if spec["type"] == "mutated_copies":
+        write_phylo_artifacts(spec, text, out_dir)
+
     metadata = dict(spec)
     metadata["n_bytes"] = len(text)
     metadata["reference"] = "reference.txt"

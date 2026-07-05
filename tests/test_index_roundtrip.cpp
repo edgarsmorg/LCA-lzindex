@@ -25,7 +25,7 @@ static fs::path tmp_prefix(const std::string& label) {
 
 // Borra archivos generados por save() tras el test.
 static void cleanup(const fs::path& prefix) {
-    for (const auto& ext : {".meta", ".grid", ".rcsa_fwd", ".rcsa_rev"})
+    for (const auto& ext : {".meta", ".grid", ".trie"})
         fs::remove(prefix.string() + ext);
 }
 
@@ -41,7 +41,7 @@ static void check_roundtrip(const std::string& text, const std::string& label,
 
     // Cargar en instancia nueva
     LZ77Index loaded;
-    loaded.load(pre);
+    loaded.load(pre, text);
 
     cleanup(pre);
 
@@ -60,9 +60,6 @@ static void check_roundtrip(const std::string& text, const std::string& label,
         const auto [lo_l, hi_l] = loaded.locate_extremal(p);
         EXPECT_EQ(lo_l, lo_o);
         EXPECT_EQ(hi_l, hi_o);
-
-        EXPECT_EQ(loaded.locate_min(p), orig.locate_min(p));
-        EXPECT_EQ(loaded.locate_max(p), orig.locate_max(p));
     }
 }
 
@@ -96,7 +93,7 @@ TEST(IndexRoundtrip, Random100Patterns) {
     orig.save(pre);
 
     LZ77Index loaded;
-    loaded.load(pre);
+    loaded.load(pre, text);
     cleanup(pre);
 
     std::mt19937 rng(99);
@@ -108,8 +105,7 @@ TEST(IndexRoundtrip, Random100Patterns) {
         const std::string p = text.substr(pos, plen);
 
         if (loaded.count(p) != orig.count(p)) ++mismatches;
-        if (loaded.locate_min(p) != orig.locate_min(p)) ++mismatches;
-        if (loaded.locate_max(p) != orig.locate_max(p)) ++mismatches;
+        if (loaded.locate_extremal(p) != orig.locate_extremal(p)) ++mismatches;
     }
     EXPECT_EQ(mismatches, 0);
 }
@@ -124,7 +120,7 @@ TEST(IndexRoundtrip, EmptyIndex) {
     orig.save(pre);
 
     LZ77Index loaded;
-    loaded.load(pre);
+    loaded.load(pre, text);
     cleanup(pre);
 
     EXPECT_EQ(loaded.text_size(),    orig.text_size());

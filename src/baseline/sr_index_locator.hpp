@@ -34,7 +34,7 @@ class SrIndexLocator {
      * Carga el índice desde archivos pre-construidos en data_dir.
      * Los archivos deben haber sido generados por sri::construct (o bm_construct_ri).
      *
-     * @param data_name  Nombre base del dataset (e.g. "Escherichia_Coli")
+     * @param data_name  Nombre base del dataset (e.g. "scaling_10MB")
      * @param data_dir   Directorio con los archivos .sdsl
      * @param sr         Subsampling rate usado al construir (default: 16)
      */

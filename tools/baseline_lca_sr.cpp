@@ -5,7 +5,7 @@
  *   baseline_lca_sr <data_dir> <data_name> <patterns_file> [sr=16] [--mode=locate|info]
  *
  *   data_dir      Directorio con los archivos .sdsl pre-construidos
- *   data_name     Nombre base del dataset (e.g. "Escherichia_Coli")
+ *   data_name     Nombre base del dataset (e.g. "scaling_10MB")
  *   patterns_file Archivo con patrones, uno por línea
  *   sr            Subsampling rate usado al construir el índice (default: 16)
  *   --mode=locate (default) Mide locate_extremal: tiempo µs/query y estadísticas

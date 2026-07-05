@@ -5,7 +5,8 @@
 #include <iosfwd>
 #include <vector>
 
-#include <sdsl/wm_int.hpp>
+#include "wm_shared.hpp"
+
 #include <sdsl/rmq_succinct_sct.hpp>
 #include <sdsl/int_vector.hpp>
 
@@ -38,16 +39,14 @@ public:
 
     // ── Construcción ─────────────────────────────────────────────────────────
     /**
-     * @param y_values  y de cada punto en orden X, valores en [0, sigma-1]
+     * @param wm        wavelet matrix compartida, construida sobre los valores y
      * @param text_pos  pesos para la minimización/maximización
-     * @param sigma     cardinalidad del alfabeto de y (= número de puntos)
      */
-    void build(const std::vector<size_t>& y_values,
-               const sdsl::int_vector<>& text_pos,
-               size_t sigma);
+    void build(const SharedWm& wm, const sdsl::int_vector<>& text_pos);
 
     // ── Consulta ──────────────────────────────────────────────────────────────
-    ArgminResult range_argmin_2d(size_t x_lo, size_t x_hi,
+    ArgminResult range_argmin_2d(const SharedWm& wm,
+                                 size_t x_lo, size_t x_hi,
                                  size_t y_lo, size_t y_hi,
                                  const sdsl::int_vector<>& text_pos) const;
 
@@ -68,26 +67,17 @@ public:
     WmRmq& operator=(WmRmq&&)      = default;
 
 private:
-    struct WmAccess : public sdsl::wm_int<> {
-        size_t zero_cnt_at(size_t k)    const { return m_zero_cnt[k]; }
-        size_t rank_level_at(size_t k)  const { return m_rank_level[k]; }
-        size_t tree_rank1(size_t i)     const { return m_tree_rank(i); }
-        size_t tree_sel0(size_t i)      const { return m_tree_select0(i); }
-        size_t tree_sel1(size_t i)      const { return m_tree_select1(i); }
-    };
-
-    WmAccess                                       wm_;
     std::vector<sdsl::rmq_succinct_sct<t_min>>     rmqs_;  // rmqs_[k]: nivel k
 
     size_t n_     = 0;
     size_t sigma_ = 0;
 
-    void build_wm(const std::vector<size_t>& y_values, size_t sigma);
-    void build_level_rmqs(const sdsl::int_vector<>& text_pos);
+    void build_level_rmqs(const SharedWm& wm, const sdsl::int_vector<>& text_pos);
 
-    size_t unwind(size_t j, uint32_t from_depth) const;
+    size_t unwind(const SharedWm& wm, size_t j, uint32_t from_depth) const;
 
-    size_t query_rec(uint32_t k,
+    size_t query_rec(const SharedWm& wm,
+                     uint32_t k,
                      size_t cur_lo, size_t cur_hi,
                      size_t sym_lo, size_t sym_hi,
                      size_t y_lo,   size_t y_hi,

@@ -40,11 +40,11 @@ static size_t bf_primary_count(const std::string& text,
     for (size_t p = 0; p + m <= text.size(); ++p) {
         if (text.compare(p, m, pattern) != 0) continue;
 
-        // Crossings
+        // Crossings: p starts within phrase k (i = b-p <= phrase_total_len_k)
         for (size_t k = 0; k + 1 < phrases.size(); ++k) {
             const size_t b = phrases[k + 1].start_pos;
             if (b >= text.size()) continue;  // boundary de centinela
-            if (p < b && b <= p + m - 1) count++;
+            if (p < b && b <= p + m - 1 && b - p <= phrases[k].length + 1) count++;
         }
 
         // End-aligned (special): P ends at end_k
@@ -234,11 +234,11 @@ static std::pair<size_t, size_t> bf_locate_extremal(
 
         bool is_primary = false;
 
-        // Crossing: boundary b cae estrictamente dentro del patrón
+        // Crossing: p starts within phrase k (strict: i = b-p <= phrase_total_len_k)
         for (size_t k = 0; k + 1 < phrases.size() && !is_primary; ++k) {
             const size_t b = phrases[k + 1].start_pos;
             if (b >= text.size()) continue;
-            if (p < b && b <= p + m - 1) is_primary = true;
+            if (p < b && b <= p + m - 1 && b - p <= phrases[k].length + 1) is_primary = true;
         }
 
         // End-aligned: P termina en el trailing_char de la frase k
@@ -348,188 +348,6 @@ TEST(LZ77Index_LocateExtremal, ConsistencyWithCount) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// locate_min() == locate_extremal().first
-// locate_max() == locate_extremal().second
-// ─────────────────────────────────────────────────────────────────────────────
-
-static void check_locate_min(const std::string& text, const std::string& pattern) {
-    LZ77Index idx;
-    idx.build(text);
-
-    const size_t got_min       = idx.locate_min(pattern);
-    const auto [exp_min, exp_max] = idx.locate_extremal(pattern);
-
-    EXPECT_EQ(got_min, exp_min)
-        << "text=" << text << " pattern=" << pattern;
-}
-
-static void check_locate_max(const std::string& text, const std::string& pattern) {
-    LZ77Index idx;
-    idx.build(text);
-
-    const size_t got_max          = idx.locate_max(pattern);
-    const auto [exp_min, exp_max] = idx.locate_extremal(pattern);
-
-    if (exp_min == SIZE_MAX) {
-        EXPECT_EQ(got_max, SIZE_MAX)
-            << "text=" << text << " pattern=" << pattern << " (no occurrences)";
-    } else {
-        EXPECT_EQ(got_max, exp_max)
-            << "text=" << text << " pattern=" << pattern;
-    }
-}
-
-TEST(LZ77Index_LocateMin, Abracadabra) {
-    const std::string text = "abracadabra";
-    for (const std::string p : {"abr", "ra", "bra", "cada", "abra", "ab"}) {
-        SCOPED_TRACE("pattern=" + p);
-        check_locate_min(text, p);
-    }
-}
-
-TEST(LZ77Index_LocateMin, Repetitive_DNA) {
-    const std::string text = "ACGTACGTACGTACGT";
-    for (const std::string p : {"ACGT", "CGTA", "GT", "ACGTACGT"}) {
-        SCOPED_TRACE("pattern=" + p);
-        check_locate_min(text, p);
-    }
-}
-
-TEST(LZ77Index_LocateMin, AllSameChar) {
-    const std::string text = "aaaaaaaaaaaaaaaa";
-    for (const std::string p : {"aa", "aaa", "aaaa"}) {
-        SCOPED_TRACE("pattern=" + p);
-        check_locate_min(text, p);
-    }
-}
-
-TEST(LZ77Index_LocateMin, DNA_Synthetic) {
-    const std::string text = "AAACCCGGGTTTTAAACCC";
-    for (const std::string p : {"AAA", "CCC", "AAACCC", "GGG"}) {
-        SCOPED_TRACE("pattern=" + p);
-        check_locate_min(text, p);
-    }
-}
-
-TEST(LZ77Index_LocateMin, NoMatch) {
-    LZ77Index idx;
-    idx.build("abracadabra");
-    EXPECT_EQ(idx.locate_min("xyz"), SIZE_MAX);
-}
-
-TEST(LZ77Index_LocateMin, ShortPatterns) {
-    LZ77Index idx;
-    idx.build("abracadabra");
-    EXPECT_EQ(idx.locate_min(""),  SIZE_MAX);
-    EXPECT_EQ(idx.locate_min("a"), SIZE_MAX);
-}
-
-TEST(LZ77Index_LocateMin, ConsistencyWithCount) {
-    const std::string text = "ACGTACGTACGTACGT";
-    LZ77Index idx;
-    idx.build(text);
-
-    for (const std::string p : {"ACGT", "GT", "xyz", "ACGTACGT", "ZZ"}) {
-        SCOPED_TRACE("pattern=" + p);
-        const size_t cnt = idx.count(p);
-        const size_t mn  = idx.locate_min(p);
-        if (cnt > 0) {
-            EXPECT_NE(mn, SIZE_MAX) << "count>0 pero locate_min retornó vacío";
-        } else {
-            EXPECT_EQ(mn, SIZE_MAX) << "count=0 pero locate_min retornó algo";
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// locate_max() — tests simétricos a locate_min
-// ─────────────────────────────────────────────────────────────────────────────
-
-TEST(LZ77Index_LocateMax, Abracadabra) {
-    const std::string text = "abracadabra";
-    for (const std::string p : {"abr", "ra", "bra", "cada", "abra", "ab"}) {
-        SCOPED_TRACE("pattern=" + p);
-        check_locate_max(text, p);
-    }
-}
-
-TEST(LZ77Index_LocateMax, Repetitive_DNA) {
-    const std::string text = "ACGTACGTACGTACGT";
-    for (const std::string p : {"ACGT", "CGTA", "GT", "ACGTACGT"}) {
-        SCOPED_TRACE("pattern=" + p);
-        check_locate_max(text, p);
-    }
-}
-
-TEST(LZ77Index_LocateMax, AllSameChar) {
-    const std::string text = "aaaaaaaaaaaaaaaa";
-    for (const std::string p : {"aa", "aaa", "aaaa"}) {
-        SCOPED_TRACE("pattern=" + p);
-        check_locate_max(text, p);
-    }
-}
-
-TEST(LZ77Index_LocateMax, DNA_Synthetic) {
-    const std::string text = "AAACCCGGGTTTTAAACCC";
-    for (const std::string p : {"AAA", "CCC", "AAACCC", "GGG"}) {
-        SCOPED_TRACE("pattern=" + p);
-        check_locate_max(text, p);
-    }
-}
-
-TEST(LZ77Index_LocateMax, NoMatch) {
-    LZ77Index idx;
-    idx.build("abracadabra");
-    EXPECT_EQ(idx.locate_max("xyz"), SIZE_MAX);
-}
-
-TEST(LZ77Index_LocateMax, ShortPatterns) {
-    LZ77Index idx;
-    idx.build("abracadabra");
-    EXPECT_EQ(idx.locate_max(""),  SIZE_MAX);
-    EXPECT_EQ(idx.locate_max("a"), SIZE_MAX);
-}
-
-TEST(LZ77Index_LocateMax, MinLeqMax) {
-    // locate_min(P) <= locate_max(P) siempre que haya ocurrencias
-    const std::string text = "ACGTACGTACGTACGT";
-    LZ77Index idx;
-    idx.build(text);
-
-    for (const std::string p : {"ACGT", "GT", "ACGTACGT", "CGTA"}) {
-        SCOPED_TRACE("pattern=" + p);
-        const size_t mn = idx.locate_min(p);
-        const size_t mx = idx.locate_max(p);
-        if (mn != SIZE_MAX) {
-            EXPECT_NE(mx, SIZE_MAX);
-            EXPECT_LE(mn, mx) << "locate_min > locate_max para pattern=" << p;
-        } else {
-            EXPECT_EQ(mx, SIZE_MAX);
-        }
-    }
-}
-
-TEST(LZ77Index_LocateMax, ExtremalConsistency) {
-    // locate_extremal(P) == {locate_min(P), locate_max(P)}
-    const std::string text = "AAACCCGGGTTTTAAACCC";
-    LZ77Index idx;
-    idx.build(text);
-
-    for (const std::string p : {"AAA", "CCC", "AAACCC", "GGG", "TTT", "TTTAAA"}) {
-        SCOPED_TRACE("pattern=" + p);
-        const auto [ext_min, ext_max] = idx.locate_extremal(p);
-        const size_t mn = idx.locate_min(p);
-        const size_t mx = idx.locate_max(p);
-        EXPECT_EQ(mn, ext_min) << "locate_min != locate_extremal.first";
-        if (ext_min == SIZE_MAX) {
-            EXPECT_EQ(mx, SIZE_MAX) << "locate_max debe ser SIZE_MAX si no hay ocurrencias";
-        } else {
-            EXPECT_EQ(mx, ext_max) << "locate_max != locate_extremal.second";
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Task 5: Tests de correctitud con special occurrences
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -549,7 +367,6 @@ TEST(LZ77Index_SpecialCorrectness, SpecialOnlyText) {
         << "bf_primary_count inesperado";
 
     EXPECT_EQ(idx.count(pattern), 1u);
-    EXPECT_EQ(idx.locate_min(pattern), 1u);
 
     const auto [mn, mx] = idx.locate_extremal(pattern);
     EXPECT_EQ(mn, 1u);

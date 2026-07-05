@@ -3,7 +3,9 @@
 
 #include <climits>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <sstream>
 
 using lz77tax::LZ77Index;
 using lz77tax::SrIndexLocator;
@@ -68,8 +70,14 @@ int main(int argc, char** argv) {
     }
 
     const auto patterns = bench::read_patterns(patterns_path);
+
+    std::ifstream tf(text_path, std::ios::binary);
+    std::ostringstream tbuf;
+    tbuf << tf.rdbuf();
+    const std::string text = tbuf.str();
+
     LZ77Index lz;
-    lz.load(lz_prefix);
+    lz.load(lz_prefix, text);
     SrIndexLocator sr;
     sr.load(dataset, sr_dir.string(), s);
 
