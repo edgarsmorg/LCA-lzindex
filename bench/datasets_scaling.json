@@ -1,0 +1,111 @@
+{
+  "_notes": [
+    "Datasets de escalado para bench de crecimiento de tamaño y tiempo de query.",
+    "Todos usan mutated_copies con mutation_rate=0.001 (0.1%) para repetitividad consistente.",
+    "genome_len * copies == n_bytes objetivo (usando potencias de 2 para genome_len).",
+    "Generar con:",
+    "  python3 scripts/gen_bench_datasets.py --manifest bench/datasets_scaling.json --out data/scaling"
+  ],
+  "datasets": [
+    {
+      "name": "scaling_10KB",
+      "type": "mutated_copies",
+      "genome_len": 1024,
+      "copies": 10,
+      "mutation_rate": 0.001,
+      "seed": 401,
+      "pattern_count": 1000,
+      "pattern_len": 32
+    },
+    {
+      "name": "scaling_50KB",
+      "type": "mutated_copies",
+      "genome_len": 5120,
+      "copies": 10,
+      "mutation_rate": 0.001,
+      "seed": 402,
+      "pattern_count": 1000,
+      "pattern_len": 32
+    },
+    {
+      "name": "scaling_100KB",
+      "type": "mutated_copies",
+      "genome_len": 10240,
+      "copies": 10,
+      "mutation_rate": 0.001,
+      "seed": 403,
+      "pattern_count": 1000,
+      "pattern_len": 32
+    },
+    {
+      "name": "scaling_500KB",
+      "type": "mutated_copies",
+      "genome_len": 51200,
+      "copies": 10,
+      "mutation_rate": 0.001,
+      "seed": 404,
+      "pattern_count": 1000,
+      "pattern_len": 32
+    },
+    {
+      "name": "scaling_1MB",
+      "type": "mutated_copies",
+      "genome_len": 131072,
+      "copies": 8,
+      "mutation_rate": 0.001,
+      "seed": 405,
+      "pattern_count": 5000,
+      "pattern_len": 32
+    },
+    {
+      "name": "scaling_5MB",
+      "type": "mutated_copies",
+      "genome_len": 524288,
+      "copies": 10,
+      "mutation_rate": 0.001,
+      "seed": 406,
+      "pattern_count": 10000,
+      "pattern_len": 32
+    },
+    {
+      "name": "scaling_10MB",
+      "type": "mutated_copies",
+      "genome_len": 1048576,
+      "copies": 10,
+      "mutation_rate": 0.001,
+      "seed": 407,
+      "pattern_count": 10000,
+      "pattern_len": 32
+    },
+    {
+      "name": "scaling_50MB",
+      "type": "mutated_copies",
+      "genome_len": 1048576,
+      "copies": 50,
+      "mutation_rate": 0.001,
+      "seed": 408,
+      "pattern_count": 10000,
+      "pattern_len": 32
+    },
+    {
+      "name": "scaling_100MB",
+      "type": "mutated_copies",
+      "genome_len": 1048576,
+      "copies": 100,
+      "mutation_rate": 0.001,
+      "seed": 409,
+      "pattern_count": 10000,
+      "pattern_len": 32
+    },
+    {
+      "name": "scaling_500MB",
+      "type": "mutated_copies",
+      "genome_len": 1048576,
+      "copies": 500,
+      "mutation_rate": 0.001,
+      "seed": 410,
+      "pattern_count": 10000,
+      "pattern_len": 32
+    }
+  ]
+}

@@ -1,0 +1,139 @@
+{
+  "_notes": [
+    "Serie de escalado EXTENDIDA hasta 2 GB (variante de datasets_scaling.json).",
+    "Mismos datasets/seeds que datasets_scaling.json hasta 500MB + scaling_1GB y scaling_2GB.",
+    "Todos usan mutated_copies con mutation_rate=0.001 (0.1%) y genome_len=1MB en los",
+    "tamaños grandes (>=50MB) para mantener alta repetitividad: n_bytes = genome_len * copies.",
+    "ADVERTENCIA DE RECURSOS:",
+    "  - Generación: ~2e9 mutaciones char-a-char en Python para el 2GB (varios minutos).",
+    "  - Construcción LZ77: el suffix array a 64 bits ocupa ~8*n bytes; para 2GB eso es",
+    "    ~16 GB solo el SA forward, x2 por el reverso. Asegura RAM/swap suficiente.",
+    "  - Considera correr solo scaling_1GB/scaling_2GB si la maquina no alcanza.",
+    "Generar con:",
+    "  python3 scripts/gen_bench_datasets.py --manifest bench/datasets_scaling_2gb.json --out data/scaling",
+    "Benchmark con:",
+    "  scripts/run_scaling_bench.sh --manifest=bench/datasets_scaling_2gb.json --out=results/scaling/2gb"
+  ],
+  "datasets": [
+    {
+      "name": "scaling_10KB",
+      "type": "mutated_copies",
+      "genome_len": 1024,
+      "copies": 10,
+      "mutation_rate": 0.001,
+      "seed": 401,
+      "pattern_count": 1000,
+      "pattern_len": 32
+    },
+    {
+      "name": "scaling_50KB",
+      "type": "mutated_copies",
+      "genome_len": 5120,
+      "copies": 10,
+      "mutation_rate": 0.001,
+      "seed": 402,
+      "pattern_count": 1000,
+      "pattern_len": 32
+    },
+    {
+      "name": "scaling_100KB",
+      "type": "mutated_copies",
+      "genome_len": 10240,
+      "copies": 10,
+      "mutation_rate": 0.001,
+      "seed": 403,
+      "pattern_count": 1000,
+      "pattern_len": 32
+    },
+    {
+      "name": "scaling_500KB",
+      "type": "mutated_copies",
+      "genome_len": 51200,
+      "copies": 10,
+      "mutation_rate": 0.001,
+      "seed": 404,
+      "pattern_count": 1000,
+      "pattern_len": 32
+    },
+    {
+      "name": "scaling_1MB",
+      "type": "mutated_copies",
+      "genome_len": 131072,
+      "copies": 8,
+      "mutation_rate": 0.001,
+      "seed": 405,
+      "pattern_count": 5000,
+      "pattern_len": 32
+    },
+    {
+      "name": "scaling_5MB",
+      "type": "mutated_copies",
+      "genome_len": 524288,
+      "copies": 10,
+      "mutation_rate": 0.001,
+      "seed": 406,
+      "pattern_count": 10000,
+      "pattern_len": 32
+    },
+    {
+      "name": "scaling_10MB",
+      "type": "mutated_copies",
+      "genome_len": 1048576,
+      "copies": 10,
+      "mutation_rate": 0.001,
+      "seed": 407,
+      "pattern_count": 10000,
+      "pattern_len": 32
+    },
+    {
+      "name": "scaling_50MB",
+      "type": "mutated_copies",
+      "genome_len": 1048576,
+      "copies": 50,
+      "mutation_rate": 0.001,
+      "seed": 408,
+      "pattern_count": 10000,
+      "pattern_len": 32
+    },
+    {
+      "name": "scaling_100MB",
+      "type": "mutated_copies",
+      "genome_len": 1048576,
+      "copies": 100,
+      "mutation_rate": 0.001,
+      "seed": 409,
+      "pattern_count": 10000,
+      "pattern_len": 32
+    },
+    {
+      "name": "scaling_500MB",
+      "type": "mutated_copies",
+      "genome_len": 1048576,
+      "copies": 500,
+      "mutation_rate": 0.001,
+      "seed": 410,
+      "pattern_count": 10000,
+      "pattern_len": 32
+    },
+    {
+      "name": "scaling_1GB",
+      "type": "mutated_copies",
+      "genome_len": 1048576,
+      "copies": 1024,
+      "mutation_rate": 0.001,
+      "seed": 411,
+      "pattern_count": 10000,
+      "pattern_len": 32
+    },
+    {
+      "name": "scaling_2GB",
+      "type": "mutated_copies",
+      "genome_len": 1048576,
+      "copies": 2048,
+      "mutation_rate": 0.001,
+      "seed": 412,
+      "pattern_count": 10000,
+      "pattern_len": 32
+    }
+  ]
+}

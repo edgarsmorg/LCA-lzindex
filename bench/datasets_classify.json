@@ -1,0 +1,77 @@
+{
+  "_notes": [
+    "Datasets para el benchmark de la pipeline de clasificación con MEMs.",
+    "Clon de datasets_scaling.json + campos de reads (n_reads, read_len, read_mut_rate).",
+    "Cada copia mutada es un genoma = hoja de un árbol binario balanceado; gen_bench_datasets.py",
+    "emite reference.txt, patterns.txt, tree.tsv, genomes.tsv y reads.tsv.",
+    "Generar con:",
+    "  python3 scripts/gen_bench_datasets.py --manifest bench/datasets_classify.json --out data/classify"
+  ],
+  "datasets": [
+    {
+      "name": "classify_100KB",
+      "type": "mutated_copies",
+      "genome_len": 10240,
+      "copies": 16,
+      "mutation_rate": 0.001,
+      "seed": 503,
+      "pattern_count": 1000,
+      "pattern_len": 32,
+      "n_reads": 2000,
+      "read_len": 250,
+      "read_mut_rate": 0.01
+    },
+    {
+      "name": "classify_500KB",
+      "type": "mutated_copies",
+      "genome_len": 32768,
+      "copies": 16,
+      "mutation_rate": 0.001,
+      "seed": 504,
+      "pattern_count": 1000,
+      "pattern_len": 32,
+      "n_reads": 2000,
+      "read_len": 250,
+      "read_mut_rate": 0.01
+    },
+    {
+      "name": "classify_1MB",
+      "type": "mutated_copies",
+      "genome_len": 65536,
+      "copies": 16,
+      "mutation_rate": 0.001,
+      "seed": 505,
+      "pattern_count": 2000,
+      "pattern_len": 32,
+      "n_reads": 2000,
+      "read_len": 250,
+      "read_mut_rate": 0.01
+    },
+    {
+      "name": "classify_5MB",
+      "type": "mutated_copies",
+      "genome_len": 327680,
+      "copies": 16,
+      "mutation_rate": 0.001,
+      "seed": 506,
+      "pattern_count": 5000,
+      "pattern_len": 32,
+      "n_reads": 2000,
+      "read_len": 250,
+      "read_mut_rate": 0.01
+    },
+    {
+      "name": "classify_10MB",
+      "type": "mutated_copies",
+      "genome_len": 655360,
+      "copies": 16,
+      "mutation_rate": 0.001,
+      "seed": 507,
+      "pattern_count": 10000,
+      "pattern_len": 32,
+      "n_reads": 2000,
+      "read_len": 250,
+      "read_mut_rate": 0.01
+    }
+  ]
+}
