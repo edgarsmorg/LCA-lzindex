@@ -66,9 +66,13 @@ int main(int argc, char** argv) {
     const std::string genomes_path = argv[3];
     const fs::path patterns_path = argv[4];
     size_t limit = SIZE_MAX;
+    std::string label;
+    fs::path csv_path;
     for (int i = 5; i < argc; ++i) {
         const std::string arg = argv[i];
         if (auto v = bench::option_value(arg, "limit"); !v.empty()) limit = std::stoull(v);
+        else if (auto v = bench::option_value(arg, "label"); !v.empty()) label = v;
+        else if (auto v = bench::option_value(arg, "csv"); !v.empty()) csv_path = v;
     }
 
     // Texto de referencia.
@@ -148,5 +152,14 @@ int main(int argc, char** argv) {
     std::cout << "\n" << (bugs == 0
         ? "OK: ningún caso ancestro/incomparable — el invariante primarias-only se cumple."
         : "FALLO: hay casos ancestro/incomparable (bug de correctitud).") << "\n";
+
+    if (!csv_path.empty()) {
+        const std::string header =
+            "label,evaluated,equal,lz_descendant,lz_ancestor,incomparable,lz_miss,no_occ";
+        std::string row = bench::csv_quote(label.empty() ? patterns_path.string() : label);
+        row += "," + std::to_string(done);
+        for (int c = 0; c < N_CAT; ++c) row += "," + std::to_string(counts[c]);
+        bench::append_csv_row(csv_path, header, row);
+    }
     return bugs == 0 ? 0 : 1;
 }
