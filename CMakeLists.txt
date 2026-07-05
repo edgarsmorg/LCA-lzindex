@@ -98,6 +98,7 @@ lz_tool(measure_index)
 lz_tool(build_lz_index)
 lz_tool(inspect_lz_index)
 lz_tool(baseline_lca_lz)
+lz_tool(verify_lca_equiv)
 
 # ── sr_locate: caso especial (usa gflags, sin sr_index_locator_obj) ───────────
 if(SR_AVAILABLE)
