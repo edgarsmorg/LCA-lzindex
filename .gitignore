@@ -37,6 +37,11 @@ data/para*
 data/influenza*
 # Datasets sintéticos generados (grandes, reproducibles con scripts)
 data/synthetic_1mb/
+data/scaling/
+data/classify/
+data/bench_100mb_mutation_sweep/
+# Resultados de benchmarks (regenerables; índices binarios pesados)
+results/
 
 # Caché sdsl-lite (generada por sr-index benchmarks en cwd)
 *.sdsl
