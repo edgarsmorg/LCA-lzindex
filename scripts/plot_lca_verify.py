@@ -27,7 +27,7 @@ MUTED   = "#666666"
 
 # Rampa secuencial azul (claro→oscuro = colección chica→grande).
 # Luminancia estrictamente decreciente (validado). Encoda el orden de tamaño.
-SEQ_BLUE = ["#9ecae1", "#6baed6", "#3182bd", "#08519c", "#062f5c"]
+SEQ_BLUE = ["#c6dbef", "#9ecae1", "#6baed6", "#4292c6", "#2171b5", "#08519c"]
 
 
 def _equal_pct(rows):
@@ -61,7 +61,10 @@ def plot_multi(plt, series, out, title):
     ax.set_xlabel("Largo del patrón (caracteres)", color=INK)
     ax.set_ylabel("% de patrones con LCA EQUAL", color=INK)
     ax.set_title(title, color=INK, fontsize=13, pad=14)
-    ax.set_ylim(30, 101)
+    # Eje Y adaptativo: zoom al rango de los datos (con margen) para no aplastar
+    # las diferencias cuando todas las series están cerca del 100%.
+    ymin_data = min(v for _, d in series for v in d.values())
+    ax.set_ylim(max(0, ymin_data - 4), 100.6)
     ax.margins(x=0.12)
 
     ax.grid(axis="y", color="#dddddd", linewidth=0.8, zorder=0)
