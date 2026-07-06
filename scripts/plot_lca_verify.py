@@ -25,9 +25,75 @@ INK     = "#222222"
 MUTED   = "#666666"
 
 
+# Rampa secuencial azul (claro→oscuro = colección chica→grande).
+# Luminancia estrictamente decreciente (validado). Encoda el orden de tamaño.
+SEQ_BLUE = ["#9ecae1", "#6baed6", "#3182bd", "#08519c", "#062f5c"]
+
+
+def _equal_pct(rows):
+    """De un CSV de verify: {largo(int): %EQUAL}."""
+    out = {}
+    for r in rows:
+        n = int(r["evaluated"])
+        if n:
+            out[int(r["label"])] = 100.0 * int(r["equal"]) / n
+    return dict(sorted(out.items()))
+
+
+def plot_multi(plt, series, out, title):
+    """series: lista de (nombre_tamaño, {largo: %EQUAL}) en orden de tamaño."""
+    fig, ax = plt.subplots(figsize=(10, 5.8))
+    fig.patch.set_facecolor(SURFACE)
+    ax.set_facecolor(SURFACE)
+
+    all_lengths = sorted({L for _, d in series for L in d})
+    xpos = {L: i for i, L in enumerate(all_lengths)}
+    colors = SEQ_BLUE[-len(series):] if len(series) <= len(SEQ_BLUE) else SEQ_BLUE
+
+    for (name, d), col in zip(series, colors):
+        xs = [xpos[L] for L in d]
+        ys = list(d.values())
+        ax.plot(xs, ys, "-o", color=col, linewidth=2, markersize=8,
+                markeredgecolor=SURFACE, markeredgewidth=1.5, label=name, zorder=3)
+
+    ax.set_xticks(list(xpos.values()))
+    ax.set_xticklabels(all_lengths)
+    ax.set_xlabel("Largo del patrón (caracteres)", color=INK)
+    ax.set_ylabel("% de patrones con LCA EQUAL", color=INK)
+    ax.set_title(title, color=INK, fontsize=13, pad=14)
+    ax.set_ylim(30, 101)
+    ax.margins(x=0.12)
+
+    ax.grid(axis="y", color="#dddddd", linewidth=0.8, zorder=0)
+    ax.set_axisbelow(True)
+    for s in ("top", "right"):
+        ax.spines[s].set_visible(False)
+    for s in ("left", "bottom"):
+        ax.spines[s].set_color("#cccccc")
+    ax.tick_params(colors=MUTED)
+
+    leg = ax.legend(title="Colección", loc="lower right", frameon=True, fontsize=9,
+                    facecolor=SURFACE, edgecolor="#dddddd", framealpha=0.95)
+    leg.get_title().set_color(INK)
+    for t in leg.get_texts():
+        t.set_color(INK)
+
+    ax.text(0.0, -0.15,
+            "0 casos ancestro/incomparable (bug) en todos los tamaños y largos — "
+            "el LCA de primarias nunca sale del linaje correcto",
+            transform=ax.transAxes, ha="left", va="top",
+            color=C_EQUAL, fontsize=9.5, fontweight="bold")
+
+    fig.tight_layout()
+    fig.savefig(out, dpi=150, bbox_inches="tight", facecolor=SURFACE)
+    print(f"Guardado: {out}")
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("csv")
+    ap.add_argument("csv", nargs="?", default=None)
+    ap.add_argument("--series", action="append", default=[],
+                    help="modo multi-tamaño: NOMBRE:csv (repetible)")
     ap.add_argument("--out", default=None)
     ap.add_argument("--title", default="Correctitud del LCA primarias-only vs largo del patrón")
     args = ap.parse_args()
@@ -40,6 +106,19 @@ def main():
         print("ERROR: matplotlib no disponible. Usa ../.venv/bin/python.", file=sys.stderr)
         sys.exit(1)
 
+    # ── Modo multi-tamaño (líneas EQUAL% por colección) ──────────────────────
+    if args.series:
+        series = []
+        for spec in args.series:
+            name, _, path = spec.partition(":")
+            series.append((name, _equal_pct(list(csv.DictReader(Path(path).open(newline=""))))))
+        out = Path(args.out) if args.out else Path("lca_verify_scale.png")
+        plot_multi(plt, series, out, args.title)
+        return
+
+    if not args.csv:
+        print("ERROR: pasa un CSV (modo barra) o --series (modo multi-tamaño)", file=sys.stderr)
+        sys.exit(1)
     rows = list(csv.DictReader(Path(args.csv).open(newline="")))
     if not rows:
         print("ERROR: CSV vacío", file=sys.stderr)
