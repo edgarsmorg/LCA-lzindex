@@ -50,7 +50,6 @@ static void print_index_stats(const LZ77Index& idx, size_t n) {
     const auto bd = grid.size_breakdown();
 
     const auto bd_min = grid.wm_min_rmq().size_breakdown();
-    const auto bd_max = grid.wm_max_rmq().size_breakdown();
 
     print_row("wm_int (grilla compartida)", bd.wm,            n);
     print_row("sd_vector fwd",            bd.bv_fwd,          n);
@@ -59,19 +58,21 @@ static void print_index_stats(const LZ77Index& idx, size_t n) {
     print_row("text_pos (int_vector)",    bd.text_pos,        n);
     print_row("phrase_total_len",         bd.phrase_total_len,n);
     print_row("wm_min_rmq (rmq BP)",      bd_min.rmq,         n);
-    print_row("wm_max_rmq (rmq BP)",      bd_max.rmq,         n);
 
     const size_t trie_total  = idx.trie_bytes();
     const size_t grid_total  = bd.wm + bd.bv_fwd + bd.bv_rev
                              + bd.rank_fwd + bd.rank_rev
                              + bd.text_pos + bd.phrase_total_len
-                             + bd.wm_min_rmq + bd.wm_max_rmq;
-    const size_t total       = grid_total + trie_total;
+                             + bd.wm_min_rmq;
+    const size_t fwd_total   = grid_total + trie_total;
+    const size_t total       = idx.index_bytes();  // incluye sub-índice reverso
 
     std::cout << "  " << std::string(50, '-') << "\n";
-    print_row("  subtotal grilla",  grid_total,  n);
-    print_row("  tries (SST+rev)",  trie_total,  n);
-    print_row("  TOTAL",            total,        n);
+    print_row("  subtotal grilla (dir)", grid_total,  n);
+    print_row("  tries (SST+rev, dir)",  trie_total,  n);
+    print_row("  subtotal índice dir",   fwd_total,   n);
+    print_row("  índice reverso",        total - fwd_total, n);
+    print_row("  TOTAL (dir+rev)",       total,       n);
     std::cout << "\n";
 }
 

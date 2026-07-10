@@ -235,32 +235,24 @@ TEST_F(ClassifyTest, LCA_Exact_SharedB1B2) {
     EXPECT_EQ(classifier_.classify_extremal(pmin, pmax), 2);
 }
 
-// Casos con limitación conocida: ocurrencias secundarias (copias dentro de frases)
-// no son detectadas. El LCA retornado es un descendiente del real.
-TEST_F(ClassifyTest, LCA_KnownLimitation_SharedA1A2) {
-    // "ACGTACGT" aparece en A1 y A2, pero todas las ocurrencias en A2 son copias
-    // de A1 (frases LZ77 secundarias). locate_extremal solo ve A1.
-    // LCA real = A(1), nuestro resultado = A1(3) o similar descendiente de A.
+// Casos que ANTES eran limitación (ocurrencias secundarias en el genoma del
+// extremo derecho no se detectaban). Con el índice reverso, la ocurrencia más a la
+// derecha ---aunque sea secundaria en el texto directo--- se localiza de forma
+// exacta como la más a la izquierda de P^R, de modo que el LCA es EXACTO.
+TEST_F(ClassifyTest, LCA_Exact_SharedA1A2) {
+    // "ACGTACGT" aparece en A1(3) y A2(4). Las ocurrencias en A2 son secundarias
+    // en el texto directo, pero el índice reverso las alcanza → LCA exacto = A(1).
     auto [pmin, pmax] = idx_.locate_extremal("ACGTACGT");
     ASSERT_NE(pmin, SIZE_MAX);
-    const int our_lca = classifier_.classify_extremal(pmin, pmax);
-    // Verificamos solo la propiedad débil: nuestro resultado ⊆ subárbol(A=1)
-    EXPECT_TRUE(is_in_subtree(our_lca, 1))
-        << "LIMITACIÓN: LCA=" << our_lca << " debería estar en subárbol de A(1)";
-    // Documentamos que NO obtenemos el LCA exacto en este caso:
-    EXPECT_NE(our_lca, 1) << "INESPERADO: si pasa, el índice ahora encuentra A2 como primaria";
+    EXPECT_EQ(classifier_.classify_extremal(pmin, pmax), 1);
 }
 
-TEST_F(ClassifyTest, LCA_KnownLimitation_SharedA2B1) {
-    // "GGGGGGGG" aparece en A2 y B1. Si las ocurrencias en B1 son todas copias
-    // de A2 (frases secundarias), locate_extremal solo ve A2.
-    // LCA real = root(0), nuestro resultado = A2(4) o similar descendiente de root.
+TEST_F(ClassifyTest, LCA_Exact_SharedA2B1) {
+    // "GGGGGGGG" aparece en A2(4) y B1(5). Con el índice reverso ambos extremos se
+    // localizan → LCA exacto = root(0).
     auto [pmin, pmax] = idx_.locate_extremal("GGGGGGGG");
     ASSERT_NE(pmin, SIZE_MAX);
-    const int our_lca = classifier_.classify_extremal(pmin, pmax);
-    EXPECT_TRUE(is_in_subtree(our_lca, 0))
-        << "LIMITACIÓN: LCA=" << our_lca << " debería estar en subárbol de root(0)";
-    EXPECT_NE(our_lca, 0) << "INESPERADO: si pasa, el índice ahora encuentra B1 como primaria";
+    EXPECT_EQ(classifier_.classify_extremal(pmin, pmax), 0);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

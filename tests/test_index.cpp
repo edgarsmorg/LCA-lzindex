@@ -217,43 +217,28 @@ TEST(LZ77Index_Accessors, GridPointsIsPhrasesMinusOne) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Brute-force para locate_extremal: retorna {pos_min, pos_max} de las
- * posiciones de inicio de las ocurrencias primarias del patrón en el texto.
+ * Brute-force para locate_extremal: retorna {pos_min, pos_max} de las posiciones
+ * de inicio de TODAS las ocurrencias del patrón en el texto.
  *
- * Primaria = crossing (b dentro del patrón) O end-aligned (P termina en end_k).
+ * Con el diseño de dos índices (directo + reverso, ambos con RMQ de mínimo),
+ * locate_extremal devuelve el mínimo y el máximo exactos sobre todas las
+ * ocurrencias: la más a la izquierda siempre es primaria (índice directo) y la
+ * más a la derecha se obtiene como la más a la izquierda de P^R (índice reverso).
  */
 static std::pair<size_t, size_t> bf_locate_extremal(
         const std::string& text,
-        const std::string& pattern,
-        const LZ77Parsing& phrases) {
+        const std::string& pattern) {
     const size_t m = pattern.size();
     size_t pos_min = SIZE_MAX, pos_max = 0;
-
+    bool found = false;
     for (size_t p = 0; p + m <= text.size(); ++p) {
         if (text.compare(p, m, pattern) != 0) continue;
-
-        bool is_primary = false;
-
-        // Crossing: p starts within phrase k (strict: i = b-p <= phrase_total_len_k)
-        for (size_t k = 0; k + 1 < phrases.size() && !is_primary; ++k) {
-            const size_t b = phrases[k + 1].start_pos;
-            if (b >= text.size()) continue;
-            if (p < b && b <= p + m - 1 && b - p <= phrases[k].length + 1) is_primary = true;
-        }
-
-        // End-aligned: P termina en el trailing_char de la frase k
-        for (size_t k = 0; k + 1 < phrases.size() && !is_primary; ++k) {
-            const size_t end_k = phrases[k].start_pos + phrases[k].length;
-            if (end_k >= text.size()) continue;
-            if (phrases[k].length + 1 >= m && p + m - 1 == end_k) is_primary = true;
-        }
-
-        if (is_primary) {
-            if (p < pos_min) pos_min = p;
-            if (p > pos_max) pos_max = p;
-        }
+        if (p < pos_min) pos_min = p;
+        if (p > pos_max) pos_max = p;
+        found = true;
     }
-    return {pos_min, pos_max};
+    return found ? std::make_pair(pos_min, pos_max)
+                 : std::make_pair(SIZE_MAX, size_t(0));
 }
 
 static void check_locate_extremal(const std::string& text,
@@ -262,8 +247,7 @@ static void check_locate_extremal(const std::string& text,
     idx.build(text);
 
     const auto [got_min, got_max] = idx.locate_extremal(pattern);
-    const auto phrases_bf = LZ77Parser().parse(text + '\0');
-    const auto [exp_min, exp_max] = bf_locate_extremal(text, pattern, phrases_bf);
+    const auto [exp_min, exp_max] = bf_locate_extremal(text, pattern);
 
     EXPECT_EQ(got_min, exp_min) << "pos_min  text=" << text << " pattern=" << pattern;
     EXPECT_EQ(got_max, exp_max) << "pos_max  text=" << text << " pattern=" << pattern;
@@ -352,8 +336,8 @@ TEST(LZ77Index_LocateExtremal, ConsistencyWithCount) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // "aabaab" / "ab": la ocurrencia en p=1 es end-aligned (especial); la de p=4
-// queda dentro del frase k=2 (secundaria, correctamente ignorada).
-// Sin el path special, idx.count devolvería 0.
+// queda dentro de la frase k=2 (secundaria). count solo cuenta la primaria (1),
+// pero locate_extremal reporta el máximo REAL (p=4) vía el índice reverso.
 TEST(LZ77Index_SpecialCorrectness, SpecialOnlyText) {
     const std::string text    = "aabaab";
     const std::string pattern = "ab";
@@ -369,8 +353,8 @@ TEST(LZ77Index_SpecialCorrectness, SpecialOnlyText) {
     EXPECT_EQ(idx.count(pattern), 1u);
 
     const auto [mn, mx] = idx.locate_extremal(pattern);
-    EXPECT_EQ(mn, 1u);
-    EXPECT_EQ(mx, 1u);
+    EXPECT_EQ(mn, 1u);   // más a la izquierda (primaria)
+    EXPECT_EQ(mx, 4u);   // más a la derecha (secundaria, vía índice reverso)
 }
 
 // Para textos con crossings Y specials, count == bf sin duplicados.

@@ -40,7 +40,6 @@ void Grid2D::build_core(const std::vector<size_t>& R,
     sdsl::construct_im(static_cast<sdsl::wm_int<>&>(wm_), Rv);
 
     wm_min_rmq_.build(wm_, text_pos_);
-    wm_max_rmq_.build(wm_, text_pos_);
 }
 
 // -----------------------------------------------------------------------------
@@ -75,15 +74,6 @@ Grid2D::MinResult Grid2D::query_min_direct(size_t x_lo, size_t x_hi,
     return {r.count, static_cast<size_t>(text_pos_[r.argmin_global]), r.argmin_global};
 }
 
-Grid2D::MaxResult Grid2D::query_max_direct(size_t x_lo, size_t x_hi,
-                                            size_t y_lo, size_t y_hi) const {
-    if (wm_max_rmq_.size() == 0 || x_lo > x_hi || y_lo > y_hi) return {0, 0, SIZE_MAX};
-    if (x_hi >= wm_.size() || y_hi >= wm_.size()) return {0, 0, SIZE_MAX};
-    const auto r = wm_max_rmq_.range_argmin_2d(wm_, x_lo, x_hi, y_lo, y_hi, text_pos_);
-    if (r.count == 0) return {0, 0, SIZE_MAX};
-    return {r.count, static_cast<size_t>(text_pos_[r.argmin_global]), r.argmin_global};
-}
-
 Grid2D::MinResult Grid2D::query_min_filtered(size_t x_lo, size_t x_hi,
                                              size_t y_lo, size_t y_hi,
                                              size_t min_phrase_len) const {
@@ -104,29 +94,6 @@ Grid2D::MinResult Grid2D::query_min_filtered(size_t x_lo, size_t x_hi,
         }
     }
     if (count == 0) return {0, SIZE_MAX, SIZE_MAX};
-    return {count, best_boundary, best_idx};
-}
-
-Grid2D::MaxResult Grid2D::query_max_filtered(size_t x_lo, size_t x_hi,
-                                             size_t y_lo, size_t y_hi,
-                                             size_t min_phrase_len) const {
-    const auto res = query_direct(x_lo, x_hi, y_lo, y_hi);
-    if (res.first == 0) return {0, 0, SIZE_MAX};
-
-    size_t count = 0;
-    size_t best_boundary = 0;
-    size_t best_idx = SIZE_MAX;
-    for (const auto& [wt_idx, y_rel] : res.second) {
-        (void)y_rel;
-        if (phrase_total_len_[wt_idx] < min_phrase_len) continue;
-        ++count;
-        const size_t boundary = text_pos_[wt_idx];
-        if (best_idx == SIZE_MAX || boundary > best_boundary) {
-            best_boundary = boundary;
-            best_idx = wt_idx;
-        }
-    }
-    if (count == 0) return {0, 0, SIZE_MAX};
     return {count, best_boundary, best_idx};
 }
 
@@ -211,7 +178,7 @@ void Grid2D::build_from_coords(
         phrase_lens_wt[j] = phrase_lens[k];
     }
 
-    // 4. Construir wm_int, text_pos_, phrase_total_len_, WmMinRmq, WmMaxRmq
+    // 4. Construir wm_int, text_pos_, phrase_total_len_, WmMinRmq
     build_core(R_vec, boundaries_wt, phrase_lens_wt);
 }
 
@@ -350,22 +317,6 @@ Grid2D::MinResult Grid2D::query_min_2d(size_t sp_right, size_t ep_right,
 }
 
 // -----------------------------------------------------------------------------
-// query_max_2d()
-// -----------------------------------------------------------------------------
-
-Grid2D::MaxResult Grid2D::query_max_2d(size_t sp_right, size_t ep_right,
-                                        size_t sp_left,  size_t ep_left) const {
-    size_t lb, rb, vlb, vrb;
-    if (!clamp_ranges(sp_right, ep_right, sp_left, ep_left, lb, rb, vlb, vrb))
-        return {0, 0, SIZE_MAX};
-
-    if (wm_max_rmq_.size() == 0) return {0, 0, SIZE_MAX};
-    const auto r = wm_max_rmq_.range_argmin_2d(wm_, lb, rb - 1, vlb, vrb - 1, text_pos_);
-    if (r.count == 0) return {0, 0, SIZE_MAX};
-    return {r.count, static_cast<size_t>(text_pos_[r.argmin_global]), r.argmin_global};
-}
-
-// -----------------------------------------------------------------------------
 // query_special()
 // -----------------------------------------------------------------------------
 
@@ -411,7 +362,6 @@ size_t Grid2D::serialize(std::ostream& out) const {
     written += sdsl::serialize(text_pos_,        out);
     written += sdsl::serialize(phrase_total_len_,out);
     written += wm_min_rmq_.serialize(out);
-    written += wm_max_rmq_.serialize(out);
     return written;
 }
 
@@ -422,7 +372,6 @@ void Grid2D::load(std::istream& in) {
     sdsl::load(text_pos_,         in);
     sdsl::load(phrase_total_len_, in);
     wm_min_rmq_.load(in);
-    wm_max_rmq_.load(in);
     // rank_fwd_ y rank_rev_ guardan puntero a bv_*_: reconstruir tras cargar.
     sdsl::util::init_support(rank_fwd_, &bv_fwd_);
     sdsl::util::init_support(rank_rev_, &bv_rev_);
@@ -438,7 +387,6 @@ Grid2D::SizeBreakdown Grid2D::size_breakdown() const {
     bd.text_pos        = sdsl::size_in_bytes(text_pos_);
     bd.phrase_total_len= sdsl::size_in_bytes(phrase_total_len_);
     bd.wm_min_rmq      = wm_min_rmq_.size_in_bytes();
-    bd.wm_max_rmq      = wm_max_rmq_.size_in_bytes();
     return bd;
 }
 

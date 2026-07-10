@@ -137,6 +137,14 @@ bool verify_occurrence(const std::string& text_s,
 // ─────────────────────────────────────────────────────────────────────────────
 
 void LZ77Index::build(const std::string& text) {
+    build_core(text);
+    // Sub-índice sobre el texto reverso: su ocurrencia primaria más a la izquierda
+    // de P^R es la ocurrencia más a la derecha de P en el texto directo.
+    rev_index_ = std::make_unique<LZ77Index>();
+    rev_index_->build_core(std::string(text.rbegin(), text.rend()));
+}
+
+void LZ77Index::build_core(const std::string& text) {
     text_s_ = text + '\0';
     n_ = text_s_.size();
     LZ77Parsing phrases = LZ77Parser().parse(text_s_);
@@ -246,6 +254,15 @@ size_t LZ77Index::trie_bytes() const {
     return total;
 }
 
+size_t LZ77Index::index_bytes() const {
+    const auto bd = grid_.size_breakdown();
+    size_t total = bd.wm + bd.bv_fwd + bd.bv_rev + bd.rank_fwd + bd.rank_rev
+                 + bd.text_pos + bd.phrase_total_len + bd.wm_min_rmq
+                 + trie_bytes();
+    if (rev_index_) total += rev_index_->index_bytes();
+    return total;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // save() / load()
 // ─────────────────────────────────────────────────────────────────────────────
@@ -258,6 +275,8 @@ void LZ77Index::save(const std::filesystem::path& prefix) const {
         sdsl::write_member(n_, f);
         sdsl::write_member(z_, f);
         write_bitset256(f, alphabet_);
+        const uint8_t has_rev = rev_index_ ? 1 : 0;
+        sdsl::write_member(has_rev, f);
     }
     // 2. Grid
     {
@@ -276,10 +295,14 @@ void LZ77Index::save(const std::filesystem::path& prefix) const {
         if (trie_->rev_sk) lz77index::basics::saveFT(trie_->rev_sk, fp);
         fclose(fp);
     }
+    // 4. Sub-índice reverso (con su propio prefijo "<prefix>_rev.*")
+    if (rev_index_)
+        rev_index_->save(std::filesystem::path(prefix.string() + "_rev"));
 }
 
 void LZ77Index::load(const std::filesystem::path& prefix, const std::string& text) {
     text_s_ = text + '\0';
+    uint8_t has_rev = 0;
     // 1. Meta
     {
         std::ifstream f(std::filesystem::path(prefix).replace_extension(".meta"),
@@ -287,6 +310,7 @@ void LZ77Index::load(const std::filesystem::path& prefix, const std::string& tex
         sdsl::read_member(n_, f);
         sdsl::read_member(z_, f);
         read_bitset256(f, alphabet_);
+        sdsl::read_member(has_rev, f);
     }
     // 2. Grid
     {
@@ -305,6 +329,12 @@ void LZ77Index::load(const std::filesystem::path& prefix, const std::string& tex
         trie_->rev    = lz77index::basics::dfuds::load(fp);
         trie_->rev_sk = lz77index::basics::loadFT(fp);
         fclose(fp);
+    }
+    // 4. Sub-índice reverso
+    if (has_rev) {
+        rev_index_ = std::make_unique<LZ77Index>();
+        rev_index_->load(std::filesystem::path(prefix.string() + "_rev"),
+                         std::string(text.rbegin(), text.rend()));
     }
 }
 
@@ -382,36 +412,35 @@ size_t LZ77Index::count(const std::string& pattern) const {
 // locate_extremal()
 // ─────────────────────────────────────────────────────────────────────────────
 
-std::pair<size_t, size_t> LZ77Index::locate_extremal(const std::string& pattern) const {
+// Ocurrencia primaria más a la izquierda de `pattern` (crossings + end-aligned),
+// o SIZE_MAX si no ocurre. Solo usa el RMQ de mínimo (nunca de máximo).
+size_t LZ77Index::locate_leftmost(const std::string& pattern) const {
     const size_t m = pattern.size();
-    if (m < 2 || grid_.point_count() == 0 || !trie_) return {SIZE_MAX, 0};
-    if (!in_alphabet(pattern, alphabet_)) return {SIZE_MAX, 0};
+    if (m < 2 || grid_.point_count() == 0 || !trie_) return SIZE_MAX;
+    if (!in_alphabet(pattern, alphabet_)) return SIZE_MAX;
 
     const std::string rev_p(pattern.rbegin(), pattern.rend());
-    const auto* rev_u  = reinterpret_cast<const unsigned char*>(rev_p.data());
-    const auto* pat_u  = reinterpret_cast<const unsigned char*>(pattern.data());
+    const auto* rev_u = reinterpret_cast<const unsigned char*>(rev_p.data());
+    const auto* pat_u = reinterpret_cast<const unsigned char*>(pattern.data());
 
-    size_t pos_min = SIZE_MAX, pos_max = 0;
-    bool found = false;
+    size_t pos_min = SIZE_MAX;
 
-    // ── Special ───────────────────────────────────────────────────────────────
+    // ── Special (end-aligned): P completo termina al final de una frase ─────────
     if (trie_->rev) {
         unsigned int Ll, Lr;
         search_rev(*trie_->rev, trie_->rev_sk, rev_u,
                    static_cast<unsigned int>(m), Ll, Lr);
         if (Lr >= Ll) {
             const auto sp = grid_.query_special_direct(Ll - 1, Lr - 1, m);
-            if (sp.count > 0 && sp.occ_min_pos != SIZE_MAX) {
-                if (verify_occurrence(text_s_, sp.occ_min_pos, pattern)) {
-                    if (sp.occ_min_pos < pos_min) pos_min = sp.occ_min_pos;
-                    if (sp.occ_max_pos > pos_max) pos_max = sp.occ_max_pos;
-                    found = true;
-                }
+            if (sp.count > 0 && sp.occ_min_pos != SIZE_MAX &&
+                verify_occurrence(text_s_, sp.occ_min_pos, pattern) &&
+                sp.occ_min_pos < pos_min) {
+                pos_min = sp.occ_min_pos;
             }
         }
     }
 
-    // ── Crossings ─────────────────────────────────────────────────────────────
+    // ── Crossings: split P[0..i-1] | P[i..m-1] para i=1..m-1 ────────────────────
     for (size_t i = 1; i < m; ++i) {
         unsigned int Rl, Rr;
         search_sst(*trie_->sst, trie_->sst_sk,
@@ -426,64 +455,51 @@ std::pair<size_t, size_t> LZ77Index::locate_extremal(const std::string& pattern)
                    lrev_u, static_cast<unsigned int>(i), Ll, Lr);
         if (Lr < Ll) continue;
 
-        auto valid_min_occ = [&](Grid2D::MinResult r, size_t& occ) {
-            if (r.count == 0 || r.wt_idx == SIZE_MAX) return false;
-            if (grid_.phrase_total_len(r.wt_idx) < i || r.boundary_min < i) return false;
-            occ = r.boundary_min - i;
-            return verify_occurrence(text_s_, occ, pattern);
-        };
-        auto valid_max_occ = [&](Grid2D::MaxResult r, size_t& occ) {
-            if (r.count == 0 || r.wt_idx == SIZE_MAX) return false;
-            if (grid_.phrase_total_len(r.wt_idx) < i || r.boundary_max < i) return false;
-            occ = r.boundary_max - i;
-            return verify_occurrence(text_s_, occ, pattern);
-        };
-
-        size_t min_occ = SIZE_MAX;
         const auto rmin = grid_.query_min_direct(Rl - 1, Rr - 1, Ll - 1, Lr - 1);
-        if (!valid_min_occ(rmin, min_occ)) {
-            min_occ = SIZE_MAX;
-            const auto res = grid_.query_direct(Rl - 1, Rr - 1, Ll - 1, Lr - 1);
-            for (const auto& [wt_idx, y_rel] : res.second) {
-                (void)y_rel;
-                if (grid_.phrase_total_len(wt_idx) < i) continue;
-                const size_t boundary = grid_.text_pos(wt_idx);
-                if (boundary < i) continue;
-                const size_t occ = boundary - i;
-                if (occ < min_occ && verify_occurrence(text_s_, occ, pattern))
-                    min_occ = occ;
-            }
-        }
+        if (rmin.count == 0 || rmin.wt_idx == SIZE_MAX) continue;
 
-        size_t max_occ = 0;
-        bool has_max = false;
-        const auto rmax = grid_.query_max_direct(Rl - 1, Rr - 1, Ll - 1, Lr - 1);
-        if (valid_max_occ(rmax, max_occ)) {
-            has_max = true;
+        // El punto de mínimo boundary del RMQ. Dos casos:
+        size_t occ = SIZE_MAX;
+        if (grid_.phrase_total_len(rmin.wt_idx) >= i && rmin.boundary_min >= i) {
+            // (a) El extremo del RMQ es un crossing válido. UNA verificación
+            //     Patricia decide todo el rectángulo: si falla, ninguna ocurrencia
+            //     calza con el patrón → no hay que enumerar.
+            const size_t cand = rmin.boundary_min - i;
+            if (verify_occurrence(text_s_, cand, pattern)) occ = cand;
         } else {
-            const auto res = grid_.query_direct(Rl - 1, Rr - 1, Ll - 1, Lr - 1);
-            for (const auto& [wt_idx, y_rel] : res.second) {
-                (void)y_rel;
-                if (grid_.phrase_total_len(wt_idx) < i) continue;
-                const size_t boundary = grid_.text_pos(wt_idx);
-                if (boundary < i) continue;
-                const size_t occ = boundary - i;
-                if (verify_occurrence(text_s_, occ, pattern) && (!has_max || occ > max_occ)) {
-                    max_occ = occ;
-                    has_max = true;
-                }
+            // (b) El extremo del RMQ no cumple el filtro de largo de frase; puede
+            //     haber otro punto (boundary mayor) que sí lo cumpla. Se busca el de
+            //     mínimo boundary entre los válidos por largo y se verifica una vez.
+            const auto mf = grid_.query_min_filtered(Rl - 1, Rr - 1, Ll - 1, Lr - 1, i);
+            if (mf.count > 0 && mf.boundary_min >= i) {
+                const size_t cand = mf.boundary_min - i;
+                if (verify_occurrence(text_s_, cand, pattern)) occ = cand;
             }
         }
 
-        if (min_occ != SIZE_MAX) {
-            if (min_occ < pos_min) pos_min = min_occ;
-            if (has_max && max_occ > pos_max) pos_max = max_occ;
-            found = true;
-        }
+        if (occ != SIZE_MAX && occ < pos_min) pos_min = occ;
     }
 
-    return found ? std::make_pair(pos_min, pos_max)
-                 : std::make_pair(SIZE_MAX, size_t(0));
+    return pos_min;
+}
+
+std::pair<size_t, size_t> LZ77Index::locate_extremal(const std::string& pattern) const {
+    const size_t p_min = locate_leftmost(pattern);
+    if (p_min == SIZE_MAX) return {SIZE_MAX, 0};
+
+    // Más a la derecha en T = más a la izquierda de P^R en T^R, remapeada.
+    // Si una ocurrencia de P empieza en s en T (largo m), en T^R (largo L=n_-1)
+    // la ocurrencia de P^R empieza en j = L - m - s; luego s = L - m - j.
+    size_t p_max = p_min;
+    if (rev_index_) {
+        const std::string rp(pattern.rbegin(), pattern.rend());
+        const size_t j = rev_index_->locate_leftmost(rp);
+        if (j != SIZE_MAX) {
+            const size_t L = n_ - 1;               // largo del texto sin centinela
+            p_max = L - pattern.size() - j;
+        }
+    }
+    return {p_min, p_max};
 }
 
 }  // namespace lz77tax

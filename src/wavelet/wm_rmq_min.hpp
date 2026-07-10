@@ -8,9 +8,17 @@
 #include "wm_shared.hpp"
 
 #include <sdsl/rmq_succinct_sct.hpp>
+#include <sdsl/rmq_succinct_sada.hpp>
 #include <sdsl/int_vector.hpp>
 
 namespace lz77tax {
+
+// Implementación de RMQ sucinto por nivel. Alias único para poder A/B entre
+// variantes de sdsl sin tocar el resto del código:
+//   rmq_succinct_sct  — Cartesian tree disperso (default histórico)
+//   rmq_succinct_sada — variante Sadakane
+template <bool t_min>
+using RmqImpl = sdsl::rmq_succinct_sct<t_min>;
 
 // API idéntica a WtRmq<t_min> (wt_rmq_min.hpp) — drop-in replacement.
 /**
@@ -67,7 +75,7 @@ public:
     WmRmq& operator=(WmRmq&&)      = default;
 
 private:
-    std::vector<sdsl::rmq_succinct_sct<t_min>>     rmqs_;  // rmqs_[k]: nivel k
+    std::vector<RmqImpl<t_min>>     rmqs_;  // rmqs_[k]: nivel k
 
     size_t n_     = 0;
     size_t sigma_ = 0;
@@ -86,6 +94,5 @@ private:
 };
 
 using WmMinRmq = WmRmq<true>;
-using WmMaxRmq = WmRmq<false>;
 
 }  // namespace lz77tax

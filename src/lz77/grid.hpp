@@ -104,29 +104,7 @@ public:
     MinResult query_min_2d(size_t sp_right, size_t ep_right,
                            size_t sp_left,  size_t ep_left) const;
 
-    /**
-     * Consulta extremal maxima usando WmMaxRmq (O(log^2 z), sin enumerar puntos).
-     *
-     * Retorna {count, boundary_max} donde boundary_max = start_{k+1} maximo
-     * entre los puntos hallados. Si count==0, boundary_max = 0.
-     *
-     * Internamente usa wm_max_rmq_ (RMQ<false>) sobre text_pos_
-     * directamente: argmax sin necesidad de invertir valores.
-     */
-    struct MaxResult {
-        size_t count;        ///< 0 si rectangulo vacio
-        size_t boundary_max; ///< maximo start_{k+1}; 0 si count==0
-        size_t wt_idx;       ///< indice del punto extremal; SIZE_MAX si count==0
-    };
-
-    MaxResult query_max_2d(size_t sp_right, size_t ep_right,
-                           size_t sp_left,  size_t ep_left) const;
-
     MinResult query_min_filtered(size_t x_lo, size_t x_hi,
-                                 size_t y_lo, size_t y_hi,
-                                 size_t min_phrase_len) const;
-
-    MaxResult query_max_filtered(size_t x_lo, size_t x_hi,
                                  size_t y_lo, size_t y_hi,
                                  size_t min_phrase_len) const;
 
@@ -151,7 +129,6 @@ public:
     const sdsl::sd_vector<>& bv_fwd()    const { return bv_fwd_; }
     const sdsl::sd_vector<>& bv_rev()    const { return bv_rev_; }
     const WmMinRmq&          wm_min_rmq()  const { return wm_min_rmq_; }
-    const WmMaxRmq&          wm_max_rmq()  const { return wm_max_rmq_; }
     /// Posicion en el texto del boundary k+1 para el punto con indice WT wt_idx.
     size_t text_pos(size_t wt_idx) const { return text_pos_[wt_idx]; }
     /// Total de caracteres de la frase k para el punto con indice WT wt_idx (= length + 1).
@@ -164,7 +141,6 @@ public:
         size_t text_pos;
         size_t phrase_total_len;
         size_t wm_min_rmq;
-        size_t wm_max_rmq;
     };
     SizeBreakdown size_breakdown() const;
 
@@ -194,10 +170,6 @@ public:
     MinResult query_min_direct(size_t x_lo, size_t x_hi,
                                size_t y_lo, size_t y_hi) const;
 
-    /// Consulta extremal maxima con rangos ya relativos.
-    MaxResult query_max_direct(size_t x_lo, size_t x_hi,
-                               size_t y_lo, size_t y_hi) const;
-
     /// Consulta especial (end-aligned) con rango Y ya relativo (0-indexed).
     SpecialResult query_special_direct(size_t y_lo, size_t y_hi, size_t plen) const;
 
@@ -217,7 +189,6 @@ private:
     sdsl::int_vector<>              text_pos_;        ///< text_pos_[j] = start_{k+1}, compacto
     sdsl::int_vector<>              phrase_total_len_;///< phrase_total_len_[j] = total_len de la frase k
     WmMinRmq                        wm_min_rmq_;
-    WmMaxRmq                        wm_max_rmq_;
 
     void build_from_coords(const std::vector<std::pair<size_t, size_t>>& coords,
                            const std::vector<size_t>& boundaries,

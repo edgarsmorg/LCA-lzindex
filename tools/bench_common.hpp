@@ -107,10 +107,9 @@ inline std::uintmax_t sum_existing_files(const std::vector<fs::path>& paths) {
     return total;
 }
 
+// Tamaño total del índice consultable (grilla + tries de ambas direcciones).
 inline std::size_t lz_grid_bytes(const lz77tax::LZ77Index& idx) {
-    const auto bd = idx.grid().size_breakdown();
-    return bd.wm + bd.bv_fwd + bd.bv_rev + bd.rank_fwd + bd.rank_rev
-         + bd.text_pos + bd.phrase_total_len + bd.wm_min_rmq + bd.wm_max_rmq;
+    return idx.index_bytes();
 }
 
 inline std::vector<fs::path> lz_files(const fs::path& prefix) {
@@ -118,6 +117,10 @@ inline std::vector<fs::path> lz_files(const fs::path& prefix) {
         fs::path(prefix).replace_extension(".meta"),
         fs::path(prefix).replace_extension(".grid"),
         fs::path(prefix).replace_extension(".trie"),
+        // sub-índice reverso
+        fs::path(prefix.string() + "_rev").replace_extension(".meta"),
+        fs::path(prefix.string() + "_rev").replace_extension(".grid"),
+        fs::path(prefix.string() + "_rev").replace_extension(".trie"),
     };
 }
 

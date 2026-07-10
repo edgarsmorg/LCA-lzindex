@@ -64,8 +64,15 @@ public:
     size_t count(const std::string& pattern) const;
 
     /**
-     * Localiza la posición mínima y máxima entre todas las ocurrencias primarias.
-     * Retorna {SIZE_MAX, 0} si no hay ocurrencias primarias.
+     * Localiza la posición mínima y máxima entre TODAS las ocurrencias del patrón.
+     *
+     * La mínima (más a la izquierda) es siempre primaria y se obtiene del índice
+     * directo. La máxima (más a la derecha) NO es en general el máximo de las
+     * primarias del texto directo (puede ser secundaria); se obtiene como la
+     * ocurrencia más a la izquierda de P^R en el índice sobre el texto reverso
+     * (que sí es primaria allí) y se remapea a coordenadas del texto directo.
+     *
+     * Retorna {SIZE_MAX, 0} si el patrón no ocurre.
      */
     std::pair<size_t, size_t> locate_extremal(const std::string& pattern) const;
 
@@ -84,8 +91,19 @@ public:
     /// Bytes de las estructuras de tries (SST + rev_trie + DAC skips)
     size_t trie_bytes() const;
 
+    /// Bytes totales del índice: grilla + tries de esta dirección MÁS el
+    /// sub-índice reverso (si existe). Es el tamaño real para calcular bpc.
+    size_t index_bytes() const;
+
 private:
     struct TrieImpl;               // PIMPL: dfuds* sst + rev_trie + FTRep* skips
+
+    /// Construye el índice sobre `text` (una sola dirección, sin sub-índice reverso).
+    void build_core(const std::string& text);
+
+    /// Posición de la ocurrencia primaria más a la izquierda de `pattern`, o
+    /// SIZE_MAX si no ocurre. Base de locate_extremal en ambas direcciones.
+    size_t locate_leftmost(const std::string& pattern) const;
 
     Grid2D                     grid_;
     size_t                     n_ = 0;
@@ -93,6 +111,7 @@ private:
     std::bitset<256>           alphabet_{};
     std::string                text_s_;           ///< texto con centinela (para verificación Patricia)
     mutable std::unique_ptr<TrieImpl>  trie_;  // mutable: dfuds no tiene metodos const
+    std::unique_ptr<LZ77Index> rev_index_;     ///< índice sobre el texto reverso (nullptr en el propio sub-índice reverso)
 };
 
 }  // namespace lz77tax
