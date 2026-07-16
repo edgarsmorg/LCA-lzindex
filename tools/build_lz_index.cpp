@@ -33,6 +33,7 @@ int main(int argc, char** argv) {
     try {
         LZ77Index idx;
         idx.build(text);
+        idx.build_oracle();          // accesor → el índice guardado es self-index
         z = idx.phrase_count();
         idx.save(out_prefix);
     } catch (const std::exception& e) {

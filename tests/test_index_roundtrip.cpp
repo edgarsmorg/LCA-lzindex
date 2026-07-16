@@ -25,7 +25,7 @@ static fs::path tmp_prefix(const std::string& label) {
 
 // Borra archivos generados por save() tras el test.
 static void cleanup(const fs::path& prefix) {
-    for (const auto& ext : {".meta", ".grid", ".trie"})
+    for (const auto& ext : {".meta", ".grid"})
         fs::remove(prefix.string() + ext);
 }
 

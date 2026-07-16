@@ -8,9 +8,10 @@
  *     cada una a su genoma y calcula el LCA del conjunto completo.
  *
  * El argumento a validar (CLAUDE.md): como la referencia sigue orden DFS, el
- * LCA de todas las ocurrencias == LCA de sus extremos. El LZ77 solo ve primarias,
- * así que su LCA debe ser EQUAL al full, o un DESCENDIENTE (más específico) en el
- * caso patológico de MEMs internos a una frase. Nunca un ancestro ni incomparable.
+ * LCA de todas las ocurrencias == LCA de sus extremos. El LZ77 solo ve primarias
+ * (todo MEM que ocurre tiene >=1 primaria: su ocurrencia más a la izquierda), así que
+ * su LCA debe ser EQUAL al full, o un DESCENDIENTE (más específico) cuando el extremo
+ * derecho lo alcanza una secundaria interior a una frase. Nunca un ancestro ni incomparable.
  *
  * Construye LZ77Index + FM-index UNA sola vez y puede barrer varios conjuntos de
  * patrones (p. ej. distintos largos) en el mismo proceso.

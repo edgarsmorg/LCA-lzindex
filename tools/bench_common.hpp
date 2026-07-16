@@ -116,11 +116,13 @@ inline std::vector<fs::path> lz_files(const fs::path& prefix) {
     return {
         fs::path(prefix).replace_extension(".meta"),
         fs::path(prefix).replace_extension(".grid"),
-        fs::path(prefix).replace_extension(".trie"),
+        fs::path(prefix).replace_extension(".orac"),   // accesor (self-index)
+        fs::path(prefix).replace_extension(".smp"),    // muestras (config velocidad)
         // sub-índice reverso
         fs::path(prefix.string() + "_rev").replace_extension(".meta"),
         fs::path(prefix.string() + "_rev").replace_extension(".grid"),
-        fs::path(prefix.string() + "_rev").replace_extension(".trie"),
+        fs::path(prefix.string() + "_rev").replace_extension(".orac"),
+        fs::path(prefix.string() + "_rev").replace_extension(".smp"),
     };
 }
 

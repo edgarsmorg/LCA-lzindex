@@ -52,17 +52,12 @@ static void print_index_stats(const LZ77Index& idx, size_t n) {
     const auto bd_min = grid.wm_min_rmq().size_breakdown();
 
     print_row("wm_int (grilla compartida)", bd.wm,            n);
-    print_row("sd_vector fwd",            bd.bv_fwd,          n);
-    print_row("sd_vector rev",            bd.bv_rev,          n);
-    print_row("rank_fwd + rank_rev",      bd.rank_fwd + bd.rank_rev, n);
     print_row("text_pos (int_vector)",    bd.text_pos,        n);
     print_row("phrase_total_len",         bd.phrase_total_len,n);
     print_row("wm_min_rmq (rmq BP)",      bd_min.rmq,         n);
 
     const size_t trie_total  = idx.trie_bytes();
-    const size_t grid_total  = bd.wm + bd.bv_fwd + bd.bv_rev
-                             + bd.rank_fwd + bd.rank_rev
-                             + bd.text_pos + bd.phrase_total_len
+    const size_t grid_total  = bd.wm + bd.text_pos + bd.phrase_total_len
                              + bd.wm_min_rmq;
     const size_t fwd_total   = grid_total + trie_total;
     const size_t total       = idx.index_bytes();  // incluye sub-índice reverso

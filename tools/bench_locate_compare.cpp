@@ -19,7 +19,7 @@ namespace fs = std::filesystem;
 static void usage(const char* argv0) {
     std::cerr << "usage: " << argv0
               << " <text_file> <patterns_file> <lz_prefix> <sr_dir>"
-              << " [--s=16] [--name=<data_name>] [--reps=3] [--csv=<path>]"
+              << " [--s=16] [--name=<data_name>] [--reps=3] [--csv=<path>] [--oracle]"
               << " [--tree=<tree.tsv>] [--genomes=<genomes.tsv>]\n";
 }
 
@@ -117,6 +117,7 @@ int main(int argc, char** argv) {
     const fs::path sr_dir = argv[4];
     std::size_t s = 16;
     std::size_t reps = 3;
+    bool use_oracle = false;   // --oracle: consultar el texto vía accesor LZ77
     std::string dataset = bench::basename(text_path);
     fs::path csv_path;
     fs::path tree_path;
@@ -130,6 +131,7 @@ int main(int argc, char** argv) {
         else if (auto v = bench::option_value(arg, "csv"); !v.empty()) csv_path = v;
         else if (auto v = bench::option_value(arg, "tree"); !v.empty()) tree_path = v;
         else if (auto v = bench::option_value(arg, "genomes"); !v.empty()) genomes_path = v;
+        else if (arg == "--oracle") use_oracle = true;
         else { std::cerr << "unknown argument: " << arg << "\n"; usage(argv[0]); return 1; }
     }
 
@@ -146,6 +148,14 @@ int main(int argc, char** argv) {
 
     LZ77Index lz;
     lz.load(lz_prefix, text);
+    if (use_oracle) {
+        // El texto deja de consultarse: las comparaciones se resuelven extrayendo
+        // desde el parsing LZ77 (accesor), como haria un self-index.
+        lz.build_oracle();
+        lz.use_oracle(true);
+        std::cerr << "accesor LZ77 activo: "
+                  << lz.oracle_bytes() / 1048576.0 << " MB\n";
+    }
     SrIndexLocator sr;
     sr.load(dataset, sr_dir.string(), s);
 

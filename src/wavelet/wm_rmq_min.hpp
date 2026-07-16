@@ -8,19 +8,10 @@
 #include "wm_shared.hpp"
 
 #include <sdsl/rmq_succinct_sct.hpp>
-#include <sdsl/rmq_succinct_sada.hpp>
 #include <sdsl/int_vector.hpp>
 
 namespace lz77tax {
 
-// Implementación de RMQ sucinto por nivel. Alias único para poder A/B entre
-// variantes de sdsl sin tocar el resto del código:
-//   rmq_succinct_sct  — Cartesian tree disperso (default histórico)
-//   rmq_succinct_sada — variante Sadakane
-template <bool t_min>
-using RmqImpl = sdsl::rmq_succinct_sct<t_min>;
-
-// API idéntica a WtRmq<t_min> (wt_rmq_min.hpp) — drop-in replacement.
 /**
  * Wavelet Matrix (flat) con RMQ por nivel.
  *
@@ -50,7 +41,14 @@ public:
      * @param wm        wavelet matrix compartida, construida sobre los valores y
      * @param text_pos  pesos para la minimización/maximización
      */
-    void build(const SharedWm& wm, const sdsl::int_vector<>& text_pos);
+    /**
+     * @param distinct_symbols  true si los valores y son todos distintos (una
+     *   permutacion). En ese caso el nivel hoja cubre un solo punto por nodo y
+     *   su RMQ es innecesario: se omite, ahorrando 1/(L+1) del espacio de RMQ.
+     *   Con false (defecto) se construye el RMQ de todos los niveles.
+     */
+    void build(const SharedWm& wm, const sdsl::int_vector<>& text_pos,
+               bool distinct_symbols = false);
 
     // ── Consulta ──────────────────────────────────────────────────────────────
     ArgminResult range_argmin_2d(const SharedWm& wm,
@@ -75,12 +73,13 @@ public:
     WmRmq& operator=(WmRmq&&)      = default;
 
 private:
-    std::vector<RmqImpl<t_min>>     rmqs_;  // rmqs_[k]: nivel k
+    std::vector<sdsl::rmq_succinct_sct<t_min>>     rmqs_;  // rmqs_[k]: nivel k
 
     size_t n_     = 0;
     size_t sigma_ = 0;
 
-    void build_level_rmqs(const SharedWm& wm, const sdsl::int_vector<>& text_pos);
+    void build_level_rmqs(const SharedWm& wm, const sdsl::int_vector<>& text_pos,
+                          bool distinct_symbols);
 
     size_t unwind(const SharedWm& wm, size_t j, uint32_t from_depth) const;
 

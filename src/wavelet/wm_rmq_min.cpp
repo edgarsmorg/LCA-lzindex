@@ -16,9 +16,13 @@ namespace lz77tax {
 
 template <bool t_min>
 void WmRmq<t_min>::build_level_rmqs(const SharedWm& wm,
-                                    const sdsl::int_vector<>& text_pos) {
+                                    const sdsl::int_vector<>& text_pos,
+                                    bool distinct_symbols) {
     const uint32_t L = wm.max_level;
-    rmqs_.resize(L + 1);
+    // Con simbolos distintos, el nivel L cubre un solo punto por nodo virtual y
+    // su RMQ es innecesario (el argmin es el propio elemento): se omite. Si hay
+    // simbolos repetidos el nodo hoja puede tener varios puntos y hace falta.
+    rmqs_.resize(distinct_symbols ? L : L + 1);
 
     // Trazar la permutación de índices que induce la wavelet matrix nivel a nivel.
     std::vector<size_t> perm(n_);
@@ -35,7 +39,7 @@ void WmRmq<t_min>::build_level_rmqs(const SharedWm& wm,
         for (size_t i = 0; i < n_; ++i)
             weights[i] = text_pos[perm[i]];
 
-        rmqs_[k] = sdsl::rmq_succinct_sct<t_min>(&weights);
+        if (k < rmqs_.size()) rmqs_[k] = sdsl::rmq_succinct_sct<t_min>(&weights);
 
         if (k == L) break;
 
@@ -57,14 +61,15 @@ void WmRmq<t_min>::build_level_rmqs(const SharedWm& wm,
 }
 
 template <bool t_min>
-void WmRmq<t_min>::build(const SharedWm& wm, const sdsl::int_vector<>& text_pos) {
+void WmRmq<t_min>::build(const SharedWm& wm, const sdsl::int_vector<>& text_pos,
+                         bool distinct_symbols) {
     assert(wm.size() == text_pos.size());
     n_     = wm.size();
     sigma_ = n_;
     rmqs_.clear();
     if (n_ == 0 || wm.empty()) return;
 
-    build_level_rmqs(wm, text_pos);
+    build_level_rmqs(wm, text_pos, distinct_symbols);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -105,7 +110,14 @@ size_t WmRmq<t_min>::query_rec(const SharedWm& wm,
     if (sym_hi < y_lo || sym_lo > y_hi)    return SIZE_MAX;
 
     if (y_lo <= sym_lo && sym_hi <= y_hi) {
-        const size_t j_local  = rmqs_[k](cur_lo, cur_hi);
+        // En el ultimo nivel el nodo cubre 1 simbolo = 1 punto (Y es permutacion):
+        // el argmin es el propio elemento, sin consultar estructura alguna.
+        // Sin RMQ para el nivel hoja (simbolos distintos): el nodo cubre un
+        // unico punto y el argmin es el propio elemento.
+        const size_t j_local = (k < rmqs_.size()) ? rmqs_[k](cur_lo, cur_hi)
+                                                  : cur_lo;
+        assert((k < rmqs_.size() || cur_lo == cur_hi) &&
+               "nivel hoja sin RMQ con mas de un punto");
         const size_t j_global = unwind(wm, j_local, k);
         count_acc += cur_hi - cur_lo + 1;
         return j_global;
@@ -208,7 +220,7 @@ void WmRmq<t_min>::load(std::istream& in) {
 // Instanciaciones explícitas
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Solo mínimo: con el sub-índice sobre T^R el máximo ES un mínimo.
 template class WmRmq<true>;
-template class WmRmq<false>;
 
 }  // namespace lz77tax

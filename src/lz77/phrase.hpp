@@ -16,8 +16,8 @@ struct Phrase {
     size_t start_pos;      ///< Posición en T donde comienza esta frase
     size_t length;         ///< Largo de la frase (0 para literal puro)
     uint8_t next_char;     ///< Carácter explícito al final (separador)
-
-    // NOTA: NO almacenamos source (no necesario para nuestro caso de uso)
+    size_t source = 0;     ///< Posición en T de la copia previa (válido si length > 0).
+                           ///< Necesario para extraer T sin almacenarlo (accesor).
 };
 
 /// Secuencia de frases que forma el parsing LZ77 completo

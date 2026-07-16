@@ -42,27 +42,6 @@ enable_testing()
 
 include(cmake/helpers.cmake)
 
-# ── Tries LZ-index (Kreft–Navarro, subconjunto de uiHRDC) ────────────────────
-# Compilado como object lib aislada: sin -pedantic/-Wextra para código C99/C++03.
-# Los headers en vendor/lz77index/ se exponen PUBLIC para que index.cpp los incluya.
-add_library(lz77index_tries OBJECT
-    vendor/lz77index/dfuds.cpp
-    vendor/lz77index/patricia.cpp
-    vendor/lz77index/patricia_node.cpp
-    vendor/lz77index/directcodes.cpp
-    vendor/lz77index/bitrankw32int.cpp
-    vendor/lz77index/bp_hb.cpp
-    vendor/lz77index/hash.cpp
-    vendor/lz77index/static_bitsequence.cpp
-    vendor/lz77index/static_bitsequence_brw32.cpp
-    vendor/lz77index/static_bitsequence_builder_brw32.cpp
-    vendor/lz77index/static_doublebitmap.cpp
-    vendor/lz77index/static_doublebitmap_s.cpp
-)
-target_include_directories(lz77index_tries PUBLIC vendor/lz77index)
-target_compile_options(lz77index_tries PRIVATE -O3 -march=native -std=c++17)
-# Sin -pedantic ni -Wextra: código legado C89/C++03
-
 # ── PIMPL del sr-index ────────────────────────────────────────────────────────
 # Compilado una sola vez y referenciado con $<TARGET_OBJECTS:sr_index_locator_obj>
 # para evitar múltiples definiciones de símbolos del sr-index al linkar.
@@ -80,7 +59,7 @@ endif()
 # ── Tests LZ77 ───────────────────────────────────────────────────────────────
 lz_test(test_lz77            SOURCES src/lz77/parser.cpp)
 lz_test(test_wm_rmq_min      SOURCES src/wavelet/wm_rmq_min.cpp)
-lz_test(test_grid            SOURCES src/lz77/parser.cpp src/lz77/grid.cpp
+lz_test(test_grid            SOURCES src/lz77/grid.cpp
                                       src/wavelet/wm_rmq_min.cpp)
 lz_test(test_index           SOURCES src/index.cpp src/lz77/parser.cpp src/lz77/grid.cpp
                                       src/wavelet/wm_rmq_min.cpp)
@@ -97,7 +76,6 @@ lz_test(test_index_roundtrip SOURCES src/index.cpp src/lz77/parser.cpp src/lz77/
 lz_tool(measure_index)
 lz_tool(build_lz_index)
 lz_tool(inspect_lz_index)
-lz_tool(baseline_lca_lz)
 lz_tool(verify_lca_equiv)
 
 # ── sr_locate: caso especial (usa gflags, sin sr_index_locator_obj) ───────────
@@ -119,7 +97,6 @@ endif()
 # ── Tools sr-index ────────────────────────────────────────────────────────────
 sr_tool(build_sr_index)
 sr_tool(inspect_sr_index)
-sr_tool(baseline_lca_sr)
 sr_tool(compare_classifiers     LZ MULTIDEF SOURCES src/mem/extractor.cpp)
 sr_tool(bench_classify_compare  LZ MULTIDEF SOURCES src/mem/extractor.cpp)
 sr_tool(bench_locate_compare    LZ MULTIDEF)

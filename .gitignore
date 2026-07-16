@@ -31,6 +31,7 @@ results/*.json
 results/*.csv
 timing.txt
 # Corpus reales (deben ignorarse por tamaño)
+data/real/
 data/Escherichia_coli*
 data/cere*
 data/para*

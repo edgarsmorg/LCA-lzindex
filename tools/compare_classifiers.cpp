@@ -19,7 +19,7 @@
  *   LZ_DESCENDANT_OF_SR — LZ77 en subárbol del sr-index (limitación primary-only esperada)
  *   SR_DESCENDANT_OF_LZ — inesperado, potencial bug
  *   INCOMPARABLE        — ramas distintas, bug
- *   LZ_UNCLASSIFIED     — LZ77 no encontró ocurrencias (read invisible para el índice)
+ *   LZ_UNCLASSIFIED     — LZ77 no localizó ninguna ocurrencia para la lectura (sin MEMs utilizables)
  *   SR_UNCLASSIFIED     — sr-index no encontró ocurrencias
  *   BOTH_UNCLASSIFIED   — ninguno encontró ocurrencias
  */

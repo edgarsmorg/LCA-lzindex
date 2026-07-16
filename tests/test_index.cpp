@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 
+#include <sdsl/suffix_arrays.hpp>
+
 using namespace lz77tax;
 
 // ─────────────────────────────────────────────────────────────────────────────

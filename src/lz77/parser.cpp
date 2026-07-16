@@ -81,6 +81,7 @@ LZ77Parsing LZ77Parser::parse(const std::string& text) {
     while (i < n) {
         const size_t r = static_cast<size_t>(isa[i]);
         size_t best_len = 0;
+        size_t best_src = 0;
 
         // Escaneo izquierdo: desde rank r-1 bajando a 0.
         // Invariante: al entrar en iteración k, min_lcp = min(LCP[k+1..r])
@@ -92,7 +93,10 @@ LZ77Parsing LZ77Parser::parse(const std::string& text) {
             for (int32_t k = static_cast<int32_t>(r) - 1; k >= 0; --k) {
                 if (min_lcp == 0) break;
                 if (static_cast<size_t>(sa[k]) < i) {
-                    best_len = std::max(best_len, min_lcp);
+                    if (min_lcp > best_len) {
+                        best_len = min_lcp;
+                        best_src = static_cast<size_t>(sa[k]);
+                    }
                     break;
                 }
                 // Prepara min_lcp para la siguiente iteración (k-1):
@@ -112,7 +116,10 @@ LZ77Parsing LZ77Parser::parse(const std::string& text) {
             for (size_t k = r + 1; k < n; ++k) {
                 if (min_lcp == 0) break;
                 if (static_cast<size_t>(sa[k]) < i) {
-                    best_len = std::max(best_len, min_lcp);
+                    if (min_lcp > best_len) {
+                        best_len = min_lcp;
+                        best_src = static_cast<size_t>(sa[k]);
+                    }
                     break;
                 }
                 // Prepara min_lcp para la siguiente iteración (k+1):
@@ -130,12 +137,13 @@ LZ77Parsing LZ77Parser::parse(const std::string& text) {
 
         if (best_len == 0) {
             // Frase literal: solo el carácter T[i]
-            phrases.push_back({i, 0, static_cast<uint8_t>(text[i])});
+            phrases.push_back({i, 0, static_cast<uint8_t>(text[i]), 0});
             i += 1;
         } else {
             // Frase de copia: copia best_len chars + agrega T[i+best_len]
             phrases.push_back({i, best_len,
-                               static_cast<uint8_t>(text[i + best_len])});
+                               static_cast<uint8_t>(text[i + best_len]),
+                               best_src});
             i += best_len + 1;
         }
     }
